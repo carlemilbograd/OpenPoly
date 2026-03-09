@@ -38,24 +38,21 @@ OpenPoly/
 ## Installation
 
 ```bash
-# 1. Clone and enter the repo
-git clone https://github.com/carlemilbograd/OpenPoly.git
-cd OpenPoly
+# 1. Clone directly into the OpenClaw skills directory
+git clone https://github.com/carlemilbograd/OpenPoly.git ~/.openclaw/workspace/skills/polymarket
+cd ~/.openclaw/workspace/skills/polymarket
 
 # 2. Install Python dependencies
 pip install -r requirements.txt
 
-# 3. Set up credentials
+# 3. Set up credentials (one-time manual step)
 cp .env.example .env
-# ↳ edit .env and add your POLYMARKET_PRIVATE_KEY
+# ↳ open .env and add your POLYMARKET_PRIVATE_KEY
 
 # 4. Derive API credentials (run once)
 python scripts/setup_credentials.py
 
-# 5. Copy skill to OpenClaw workspace
-cp -r . ~/.openclaw/workspace/skills/polymarket
-
-# 6. Restart OpenClaw or say "refresh skills"
+# 5. Restart OpenClaw or say "refresh skills"
 ```
 
 ---
