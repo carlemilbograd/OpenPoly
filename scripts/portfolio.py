@@ -50,7 +50,10 @@ def main():
 
     # USDC balance via CLOB
     try:
-        bal = client.get_balance_allowance(asset_type=1)  # 1 = USDC
+        from py_clob_client.clob_types import AssetType, BalanceAllowanceParams
+        bal = client.get_balance_allowance(
+            params=BalanceAllowanceParams(asset_type=AssetType.COLLATERAL)
+        )
         usdc = float(bal.get("balance", 0)) / 1e6
         print(f"  USDC cash balance:    {fmt_usdc(usdc)}")
     except Exception as e:

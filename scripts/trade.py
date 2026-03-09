@@ -77,22 +77,23 @@ def main():
 
     try:
         if args.order_type == "FOK":
-            # Market order
+            # Market order — order_type is NOT passed to MarketOrderArgs, only to post_order
             mo_args = MarketOrderArgs(
                 token_id=args.token_id,
                 amount=args.size,
                 side=side_const,
-                order_type=order_type,
             )
             signed = client.create_market_order(mo_args)
             resp = client.post_order(signed, order_type)
         else:
-            # Limit order
+            # Limit order — client auto-resolves tick_size and neg_risk per market
+            expiration = args.expiry if args.order_type == "GTD" else 0
             o_args = OrderArgs(
                 token_id=args.token_id,
                 price=args.price,
                 size=args.size,
                 side=side_const,
+                expiration=expiration,
             )
             signed = client.create_order(o_args)
             resp = client.post_order(signed, order_type)
@@ -103,7 +104,7 @@ def main():
             order_id = resp.get("orderID") or resp.get("id") or ""
             if order_id:
                 print(f"  Order ID: {order_id}")
-                print(f"  Cancel with: python cancel.py --order-id {order_id}")
+                print(f"  Cancel with: python scripts/cancel.py --order-id {order_id}")
         print()
 
     except Exception as e:
