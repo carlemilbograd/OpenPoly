@@ -258,6 +258,42 @@ def run_once(args, client, state: dict) -> dict:
             save_state(state)
             return state
 
+    # ── Slippage simulation ───────────────────────────────────────────────────
+    # Simulate each leg against the live orderbook. Only proceed if the
+    # actual fill price still leaves a positive net profit after slippage.
+    if not args.skip_slippage_check:
+        try:
+            from execution_simulator import simulate_order, is_viable
+            total_slippage = 0.0
+            viable = True
+            for outcome in best["outcomes"]:
+                leg_cost = shares * outcome["price"]
+                sim = simulate_order(client, outcome["token_id"], "BUY", leg_cost)
+                total_slippage += sim.slippage_pct
+                ok, net = is_viable(sim, best["net_profit_pct"])
+                if not ok:
+                    logger.warning(
+                        f"Slippage check FAILED for {outcome['outcome']}: "
+                        f"slippage {sim.slippage_pct:.2f}%  net after slip: {net*100:.2f}%  "
+                        f"(gap was {best['net_profit_pct']*100:.2f}%). Skipping."
+                    )
+                    viable = False
+                    break
+                if sim.depth_warning:
+                    logger.warning(
+                        f"Depth warning on {outcome['outcome']}: "
+                        f"book may not fill ${leg_cost:.2f}"
+                    )
+            if not viable:
+                save_state(state)
+                return state
+            logger.info(
+                f"Slippage check PASSED: total slippage ≈ {total_slippage:.2f}%  "
+                f"net still profitable."
+            )
+        except ImportError:
+            logger.debug("execution_simulator not found — skipping slippage check.")
+
     if args.dry_run:
         logger.info("[DRY RUN] Would execute the following legs:")
         for o in best["outcomes"]:
@@ -336,6 +372,8 @@ def main():
                         help="Markets to scan per round (default 200)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Simulate only — no orders placed")
+    parser.add_argument("--skip-slippage-check", action="store_true",
+                        help="Bypass execution_simulator slippage gate (faster, less safe)")
     parser.add_argument("--once", action="store_true",
                         help="Run exactly one round and exit (for use by scheduler.py)")
     parser.add_argument("--status", action="store_true",

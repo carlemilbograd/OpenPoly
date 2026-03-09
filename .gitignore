@@ -38,6 +38,12 @@ schedule.json
 auto_arbitrage_state.json
 monitor_state.json
 scheduler.pid
+correlation_state.json
+news_trader_state.json
+news_sources.json
+market_maker_state.json
+ai_signals.json
+omni_state.json
 logs/
 
 # Pytest

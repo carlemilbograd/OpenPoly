@@ -31,9 +31,15 @@ OpenPoly/
     ├── history.py            # trade history
     ├── price_history.py      # price chart over time with ASCII sparkline
     ├── market_stats.py       # deep stats combining Gamma + Data + CLOB APIs
-    ├── exposure.py           # portfolio risk and concentration analysis
-    ├── redeem.py             # on-chain redemption of resolved positions
-    └── watchlist.py          # persistent price alerts with polling
+    ├── exposure.py               # portfolio risk and concentration analysis
+    ├── redeem.py                 # on-chain redemption of resolved positions
+    ├── watchlist.py              # persistent price alerts with polling
+    ├── execution_simulator.py    # orderbook slippage simulation + optimal sizing
+    ├── correlation_arbitrage.py  # cross-market correlated-pair arbitrage
+    ├── news_trader.py            # news-driven trades (RSS, Nitter, gov feeds)
+    ├── market_maker.py           # bid/ask spread earning with inventory control
+    ├── ai_automation.py          # AI signal generation and automated execution
+    └── omni_strategy.py          # all-in-one strategy orchestrator
 ```
 
 ---
@@ -89,6 +95,12 @@ Just talk to your OpenClaw agent naturally:
 | "Alert me when [market] goes above 0.70" | `watchlist.py add --token-id ... --above 0.70` |
 | "What automation tasks are scheduled?" | `scheduler.py status` |
 | "Stop the automation daemon" | `scheduler.py stop` |
+| "Simulate how much slippage a $100 buy would cause" | `execution_simulator.py --token-id ... --size 100 --edge 0.07` |
+| "Find arbitrage in logically linked markets" | `correlation_arbitrage.py --scan` |
+| "Trade on the latest news" | `news_trader.py --once --dry-run` |
+| "Make markets on Polymarket and earn the spread" | `market_maker.py --scan-targets` |
+| "Generate AI buy/sell signals for top markets" | `ai_automation.py --once --signals` |
+| "Run all strategies at once with $500" | `omni_strategy.py --start --budget 500` |
 
 The agent reads `SKILL.md` to know exactly when and how to call each script.
 
@@ -314,9 +326,77 @@ python scripts/auto_monitor.py --alerts --since 24h  # recent market alerts
 |---|---|---|
 | `auto_arbitrage.py` | Scan + execute arbitrage at threshold | `--once` |
 | `auto_monitor.py` | Scan for price moves, arb gaps, spikes | `--once` |
+| `correlation_arbitrage.py` | Cross-market correlated-pair arb | `--once --scan` |
+| `news_trader.py` | News-driven momentum trades | `--once` |
+| `market_maker.py` | Post bid+ask quotes, earn spread | `--once` |
+| `ai_automation.py` | AI signal generation + execution | `--once` |
+| `omni_strategy.py` | Orchestrate all strategies | `--once` |
 | `exposure.py` | Portfolio risk check | *(runs and exits)* |
 | `watchlist.py check` | Fire watchlist price alerts | *(runs and exits)* |
 | `portfolio.py` | Balance + positions snapshot | *(runs and exits)* |
+
+---
+
+### `execution_simulator.py`
+Simulates an order against the live orderbook before placing it. Estimates slippage, computes net profit after fees, and finds the optimal order size for a given edge.
+```bash
+python scripts/execution_simulator.py --token-id TOKEN --size 50 --edge 0.07
+python scripts/execution_simulator.py --token-id TOKEN --optimal-size --edge 0.06 --budget 200
+```
+
+### `correlation_arbitrage.py`
+Builds a keyword-based correlation graph across all active markets and finds pairs where implied probabilities are inconsistent — e.g. "Trump wins" + "Republican wins" priced so their combined cost is below $1.
+```bash
+python scripts/correlation_arbitrage.py --scan                    # find all gaps
+python scripts/correlation_arbitrage.py --scan --min-edge 0.03    # 3%+ net edge only
+python scripts/correlation_arbitrage.py --scan --execute --budget 100
+python scripts/correlation_arbitrage.py --graph                   # print full correlation graph
+python scripts/correlation_arbitrage.py --once                    # single-shot for scheduler
+```
+
+### `news_trader.py`
+Monitors RSS feeds, Nitter (Twitter/X public RSS), and government announcement feeds. When major news is detected, scores it against active markets, estimates probability shifts, and trades before the crowd reacts.
+```bash
+python scripts/news_trader.py --once                      # single scan cycle
+python scripts/news_trader.py --loop --interval 5         # poll every 5 minutes
+python scripts/news_trader.py --loop --interval 5 --dry-run
+python scripts/news_trader.py --sources                   # list configured feeds
+python scripts/news_trader.py --add-source "https://..." --source-label "My Feed"
+python scripts/news_trader.py --history --limit 20
+```
+
+### `market_maker.py`
+Posts a bid slightly below the midpoint and an ask slightly above it. Earns the spread when both sides fill. Inventory control prevents over-exposure by skewing quote sizes when net position is unbalanced.
+```bash
+python scripts/market_maker.py --scan-targets              # find best markets to make
+python scripts/market_maker.py --market-id TOKEN --spread 0.02 --size 10
+python scripts/market_maker.py --once                      # single quote refresh
+python scripts/market_maker.py --loop --interval 30        # refresh every 30s
+python scripts/market_maker.py --status                    # show inventory
+python scripts/market_maker.py --close --market-id TOKEN   # cancel quotes + stop
+```
+
+### `ai_automation.py`
+Runs systematic analysis across Polymarket's top markets using momentum, volume, and mean-reversion heuristics (designed as a drop-in slot for a real LLM call). Produces structured `ai_signals.json` consumed by `omni_strategy.py` and other scripts.
+```bash
+python scripts/ai_automation.py --once                          # research top 20 markets
+python scripts/ai_automation.py --research-top 50 --once        # broader scan
+python scripts/ai_automation.py --signals                        # print saved signals
+python scripts/ai_automation.py --once --execute --min-confidence 0.7
+python scripts/ai_automation.py --loop --interval 30            # refresh every 30 min
+```
+
+### `omni_strategy.py`
+Orchestrates all strategies simultaneously via background subprocesses. Splits a total USDC budget across strategies, monitors health, and reports combined P&L.
+```bash
+python scripts/omni_strategy.py --start --budget 1000
+python scripts/omni_strategy.py --start --budget 1000 --dry-run
+python scripts/omni_strategy.py --start --split "arb:30,corr:25,mm:25,news:10,ai:10"
+python scripts/omni_strategy.py --once                           # one cycle of all strategies
+python scripts/omni_strategy.py --status                         # running processes
+python scripts/omni_strategy.py --pnl                            # combined P&L
+python scripts/omni_strategy.py --stop                           # stop everything
+```
 
 ---
 

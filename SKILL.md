@@ -457,6 +457,189 @@ python scripts/scheduler.py start --background
 
 ---
 
+## 19. execution_simulator.py — Slippage Estimation & Optimal Sizing
+
+**Purpose**: Simulate an order against the live orderbook before placing it.
+Estimates average fill price, slippage, and whether the trade is still profitable
+after fees. Also finds the optimal order size for a given edge.
+
+**Decision rule**: `net = edge - slippage - fees`. If `net >= min_net_profit` → TRADE; else → SKIP.
+
+**When to use**:
+- Any time you're about to place a large order and want to know what fill price to expect
+- Before executing arbitrage: "is the edge big enough to survive the slippage?"
+- When a user asks "how much slippage will I get?"
+- Imported by other scripts (`auto_arbitrage.py`, `correlation_arbitrage.py`) automatically
+
+**Commands**:
+```bash
+python scripts/execution_simulator.py --token-id TOKEN --size 50 --edge 0.07
+python scripts/execution_simulator.py --token-id TOKEN --size 100 --edge 0.05 --side SELL
+python scripts/execution_simulator.py --token-id TOKEN --optimal-size --edge 0.06 --budget 200
+python scripts/execution_simulator.py --token-id TOKEN --size 50 --edge 0.07 --json
+```
+
+**Output**: Slippage %, average fill price, fill breakdown by price level, decision: TRADE or SKIP.
+
+---
+
+## 20. correlation_arbitrage.py — Cross-Market Correlated-Pair Arbitrage
+
+**Purpose**: Find and exploit pricing gaps between logically linked markets.
+Examples: "Trump wins election" ↔ "Republican wins election"; "Fed raises in March" ↔ "Fed raises in Q1".
+If YES(A) + NO(B) < 1.0, buying both guarantees profit (assuming A and B are truly equivalent).
+
+**When to use**:
+- When user asks about "correlation arbitrage", "cross-market arbitrage", or "linked market gaps"
+- Broader opportunity set than single-market arb — usually more gaps available
+- Pairs `--once` with `scheduler.py` for continuous scanning
+
+**Commands**:
+```bash
+python scripts/correlation_arbitrage.py --scan                    # scan all detected pairs
+python scripts/correlation_arbitrage.py --scan --min-edge 0.03    # 3%+ net edge only
+python scripts/correlation_arbitrage.py --scan --tag politics      # filter by tag
+python scripts/correlation_arbitrage.py --scan --execute --budget 100  # execute best gap
+python scripts/correlation_arbitrage.py --graph                   # print full correlation graph
+python scripts/correlation_arbitrage.py --once                    # single-shot for scheduler
+```
+
+**Arguments**:
+- `--min-edge` float (default 0.03): minimum net profit threshold
+- `--limit` int (default 150): number of markets to scan
+- `--tag` str: restrict to a Gamma API tag (politics, crypto, etc.)
+- `--execute`: execute the best opportunity found
+- `--budget` float: USDC for execution (default 50)
+- `--confirm`: skip interactive confirmation prompt
+- `--json`: raw JSON output
+
+---
+
+## 21. news_trader.py — News-Driven Probability Trading
+
+**Purpose**: Monitor RSS feeds, public Twitter/X (via Nitter), government feeds, and crypto news.
+When important news is detected, scores it against active Polymarket questions, estimates
+the implied probability shift, and trades before the market reprices.
+
+**When to use**:
+- When user asks to "trade on news" or "monitor news feeds"
+- When user wants to set up real-time event-driven trading
+- Pairs with `scheduler.py --once` every 3–5 minutes for continuous monitoring
+
+**Commands**:
+```bash
+python scripts/news_trader.py --once                          # single news scan cycle
+python scripts/news_trader.py --loop --interval 5             # poll every 5 minutes
+python scripts/news_trader.py --loop --interval 5 --dry-run   # simulate only
+python scripts/news_trader.py --sources                        # list active feeds
+python scripts/news_trader.py --add-source "URL" --source-label "Name"
+python scripts/news_trader.py --history --limit 20            # show recent trades
+```
+
+**Arguments**:
+- `--budget` float (default 25): USDC per trade
+- `--min-edge` float (default 0.04): minimum net edge to trade
+- `--min-relevance` float (default 0.30): minimum story↔market relevance score
+
+**State files**: `news_trader_state.json` (seen story IDs, trade log), `news_sources.json` (feed URLs).
+
+---
+
+## 22. market_maker.py — Automated Market Making
+
+**Purpose**: Earn the bid-ask spread by posting a bid slightly below mid and an ask slightly
+above mid. When both sides fill, profit ≈ spread minus fees. Inventory control adjusts
+quote sizes when net position becomes skewed to avoid directional risk.
+
+**Best target markets**: High 24h volume AND near-50/50 price (tightest natural spread).
+
+**When to use**:
+- When user asks to "make markets", "earn the spread", or "provide liquidity"
+- When user asks for passive income from Polymarket activity
+
+**Commands**:
+```bash
+python scripts/market_maker.py --scan-targets                  # find best markets to make
+python scripts/market_maker.py --market-id TOKEN               # make a specific token (auto-params)
+python scripts/market_maker.py --market-id TOKEN --spread 0.02 --size 10 --max-inventory 50
+python scripts/market_maker.py --once                          # single quote refresh
+python scripts/market_maker.py --loop --interval 30            # refresh every 30s
+python scripts/market_maker.py --status                        # inventory + active orders
+python scripts/market_maker.py --close --market-id TOKEN       # cancel all quotes
+```
+
+**Arguments**:
+- `--spread` float (default 0.02): total spread as fraction (0.02 = 2%)
+- `--size` float (default 10): USDC per side per quote
+- `--max-inventory` float (default 50): max net YES exposure before skewing quotes
+- `--interval` float (default 30): seconds between quote refreshes
+
+**State file**: `market_maker_state.json` (inventory, fill count, P&L estimate per token).
+
+---
+
+## 23. ai_automation.py — AI Signal Generation
+
+**Purpose**: Systematically researches Polymarket's top markets and produces structured
+buy/sell signals. Applies momentum, volume, and mean-reversion heuristics (designed as
+a plug-in slot for real LLM analysis in an OpenClaw context). Saves signals to
+`ai_signals.json` consumed by `omni_strategy.py` and other scripts.
+
+**Signal schema**: `{ direction: YES|NO|PASS, confidence: 0-1, edge_estimate: 0-1, rationale: "..." }`
+
+**When to use**:
+- When user asks for "AI-driven trading", "automated analysis", or "buy/sell signals"
+- As a scheduled job alongside `auto_arbitrage.py` for full automation
+
+**Commands**:
+```bash
+python scripts/ai_automation.py --once                          # research top 20 markets
+python scripts/ai_automation.py --research-top 50 --once        # scan top 50
+python scripts/ai_automation.py --signals                        # print current signals
+python scripts/ai_automation.py --once --execute --min-confidence 0.7  # execute top signals
+python scripts/ai_automation.py --loop --interval 30            # refresh every 30 min
+```
+
+**Arguments**:
+- `--research-top` int (default 20): markets to analyze per run
+- `--min-edge` float (default 0.03): minimum edge to generate a signal
+- `--min-confidence` float (default 0.60): minimum confidence to execute
+- `--budget` float (default 20): USDC per executed signal
+
+**State file**: `ai_signals.json`
+
+---
+
+## 24. omni_strategy.py — All-in-One Strategy Orchestrator
+
+**Purpose**: Launches ALL strategies simultaneously as background subprocesses with a
+single command. Splits a total USDC budget across strategies, monitors process health,
+and aggregates P&L from all strategy state files.
+
+**When to use**:
+- When user asks to "run everything", "start all strategies", or "go full auto"
+- Best starting point for a user who wants a fully automated Polymarket account
+
+**Commands**:
+```bash
+python scripts/omni_strategy.py --start --budget 1000          # start all, $1000 total
+python scripts/omni_strategy.py --start --budget 1000 --dry-run
+python scripts/omni_strategy.py --start --split "arb:30,corr:25,mm:25,news:10,ai:10"
+python scripts/omni_strategy.py --start --only "arb,mm"        # subset of strategies
+python scripts/omni_strategy.py --once                         # one cycle of all, then exit
+python scripts/omni_strategy.py --status                        # running processes + PIDs
+python scripts/omni_strategy.py --pnl                           # combined P&L report
+python scripts/omni_strategy.py --stop                          # terminate all
+```
+
+**Budget aliases for --split**: `arb` = auto_arbitrage, `corr` = correlation_arbitrage,
+`mm` = market_maker, `news` = news_trader, `ai` = ai_automation.
+
+**State file**: `omni_state.json` (PIDs, budgets, start times).
+**Logs**: `logs/omni_<strategy>_<date>.log` for each running strategy.
+
+---
+
 ## Error Handling
 
 - If scripts fail with `ModuleNotFoundError`: run `pip install py-clob-client requests python-dotenv web3 --break-system-packages`
