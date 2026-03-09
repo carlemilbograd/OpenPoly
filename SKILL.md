@@ -779,6 +779,114 @@ if not ok:
 
 ---
 
+## 28. db.py — SQLite Data Layer
+
+**Purpose**: Unified SQLite store (`openpoly.db`) that replaces scattered JSON state files.
+Persists articles, trade signals, executed trades, resolved outcomes, and market metadata.
+Also scores each signal against known outcomes to build per-source accuracy statistics that
+feed the probability model.
+
+**When to use**:
+- When user asks "what trades have I made?", "what's my signal history?", "how accurate have my news signals been?"
+- Before running an eval cycle — migrate existing JSON files first
+- When debugging — `poly db status` shows all row counts instantly
+
+**Commands**:
+```bash
+poly db status               # row counts for all tables
+poly db migrate              # absorb JSON state files → DB
+poly db vacuum               # reclaim disk space
+poly db schema               # print CREATE TABLE statements
+poly db articles [--limit N] # recent ingested news articles
+poly db signals  [--limit N] # recent trade signals
+poly db trades   [--limit N] # recent executed trades
+poly db outcomes [--limit N] # resolved market outcomes
+poly db accuracy             # per-source hit rate (only sources with ≥5 scored signals)
+```
+
+**Importable API**:
+```python
+from db import DB
+
+with DB() as db:
+    db.insert_signal(source="news", market_id="0xabc", direction="YES",
+                     confidence=0.72, edge_estimate=0.09)
+    signals = db.recent_signals(limit=20, market_id="0xabc")
+    accuracy = db.accuracy_by_source()
+
+# accuracy → {"news": {"hit": 14, "miss": 6, "hit_rate": 0.70}, ...}
+```
+
+**Schema**: `articles`, `signals`, `trades`, `outcomes`, `signal_outcomes`, `markets_cache`
+
+**State file**: `openpoly.db` (WAL mode, single-writer, safe to read concurrently)
+
+---
+
+## 29. prob_model.py — Calibrated Probability Estimation
+
+**Purpose**: Converts available market data and recent signals into a **calibrated fair probability**
+before Kelly sizing. Uses the current market price as a Bayesian prior, then updates it with
+news/AI/arb signals weighted by their historical accuracy (from `db.py`). Applies shrinkage toward
+the market price when signal evidence is thin, exponential time-decay on old signals, and outputs
+a full factor breakdown.
+
+**When to use**:
+- When user asks "what's the fair value of X?", "is there edge in this market?", "how much should I bet?"
+- Before placing any sizeable trade — run `poly prob` first to sanity-check the edge
+- When calibrating signal quality: "are my news signals actually adding alpha?"
+
+**Output fields**:
+| Field | Meaning |
+|---|---|
+| `fair_prob` | Calibrated P(YES) after all signal updates |
+| `market_price` | Current mid-price (consensus) |
+| `edge` | `fair_prob − market_price` (positive = BUY YES) |
+| `direction` | Which token to buy (YES or NO) |
+| `kelly_full` | Full Kelly fraction (theoretical maximum) |
+| `kelly_quarter` | Quarter-Kelly (recommended; more conservative) |
+| `suggested_size` | USDC amount (quarter-Kelly × balance) |
+| `confidence` | 0–1 trust in estimate (more signals = higher) |
+| `factors` | Per-signal breakdown: source, prior→posterior shift |
+
+**Commands**:
+```bash
+poly prob --market-id ID                         # basic estimate (fetches live price)
+poly prob --market-id ID --balance 500           # include Kelly sizing
+poly prob --market-id ID --show-signals          # per-signal factor breakdown
+poly prob --market-id ID --json                  # machine-readable output
+poly prob --market-id ID --save                  # save estimate to DB signals table
+poly prob --market-id ID --max-age 24            # only use signals < 24 hours old
+```
+
+**Importable API**:
+```python
+from prob_model import estimate
+
+result = estimate(
+    market_id="0xabc...",
+    balance=500,
+    max_age_hours=48,
+    extra_signals=[{"source": "manual", "direction": "YES", "confidence": 0.8,
+                    "created_at": time.time()}],
+)
+
+print(result["fair_prob"])        # 0.61
+print(result["edge"])             # 0.09
+print(result["kelly_quarter"])    # 0.045
+print(result["suggested_size"])   # 22.50  (USDC)
+```
+
+**Algorithm**:
+1. Fetch market mid-price from CLOB → use as Bayesian prior P(YES)
+2. Load recent signals from DB (falling back to JSON state files)
+3. Pull per-source hit rates from DB → convert to calibration weights
+4. For each signal: Bayesian update scaled by source credibility × time decay
+5. Shrink toward market price proportional to N_signals / (N_signals + 4)
+6. Compute Kelly: `f* = (p×b − q) / b` where `b = (1−price) / price`
+
+---
+
 ## Error Handling
 
 - If commands fail with `ModuleNotFoundError`: run `pip install py-clob-client requests python-dotenv web3 --break-system-packages`
@@ -795,3 +903,4 @@ if not ok:
 3. **Before starting any automation, recommend the user configure `poly risk set --max-daily-loss 0.05`**
 4. **Warn the user** that prediction markets carry risk and past performance is not indicative of future results
 5. **Never store private keys in logs or output** — mask as `0x****...****`
+6. **Before sizing any trade**, run `poly prob --market-id ID --balance N` to get a calibrated fair probability and suggested Kelly size

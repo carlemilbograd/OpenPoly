@@ -59,6 +59,8 @@ COMMANDS = {
     "backtest":     ("backtest.py",              "Replay strategies on price history  [--strategy momentum|mean-revert]"),
     "eval":         ("eval.py",                  "Score signals vs resolved outcomes  [--since 7d] [--report]"),
     "risk":         ("risk_guard.py",            "Daily loss limits + kill switch  status|kill|reset|set"),
+    "db":           ("db.py",                    "SQLite data layer  status|migrate|signals|trades|accuracy"),
+    "prob":         ("prob_model.py",            "Calibrated fair-probability estimate  --market-id ID  [--balance N] [--json]"),
 }
 
 # ── aliases ───────────────────────────────────────────────────────────────────
@@ -88,6 +90,12 @@ ALIASES = {
     "guard":        "risk",
     "kill":         "risk",
     "safety":       "risk",
+    "data":         "db",
+    "database":     "db",
+    "migrate":      "db",
+    "probability":  "prob",
+    "fair":         "prob",
+    "edge":         "prob",
 }
 
 
@@ -112,7 +120,7 @@ def _print_help():
         ("Trading", ["trade", "cancel", "redeem"]),
         ("Monitoring", ["watch", "monitor"]),
         ("Automation", ["auto-arb", "schedule", "news", "mm", "signals", "omni"]),
-        ("Evaluation & Safety", ["backtest", "eval", "risk"]),
+        ("Evaluation & Safety", ["backtest", "eval", "risk", "db", "prob"]),
     ]
 
     for section, cmds in sections:

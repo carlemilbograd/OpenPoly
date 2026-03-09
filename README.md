@@ -54,6 +54,8 @@ No intermediary. No dashboard. Just your agent and a full trading toolkit.
 | **Backtesting** | Replay momentum / mean-reversion signals on resolved market price history |
 | **Evaluation** | Post-resolution hit-rate scoring — which sources and strategies made money |
 | **Risk guard** | Max daily loss limit, position caps, manual kill switch, daily PnL log |
+| **Data layer** | Unified SQLite store — articles, signals, trades, outcomes, per-source accuracy |
+| **Prob model** | Calibrated fair-probability engine — Bayesian prior + signal updates + Kelly sizing |
 | **On-chain** | Redeem resolved winning positions via Polygon CTF contract |
 
 ---
@@ -582,6 +584,60 @@ ok, reason = check_limits(trade_size_usd=50, current_balance=400)
 Config and daily PnL stored in `risk_state.json`.
 </details>
 
+<details>
+<summary><b>db.py</b> — Unified SQLite data layer</summary>
+
+```bash
+python scripts/db.py status              # row counts for all tables
+python scripts/db.py migrate             # absorb JSON state files → DB
+python scripts/db.py accuracy            # per-source signal hit rate
+python scripts/db.py signals --limit 20  # recent signals
+python scripts/db.py trades  --limit 20  # recent trades
+python scripts/db.py vacuum              # reclaim disk space
+```
+
+Importable in other scripts:
+
+```python
+from db import DB
+
+with DB() as db:
+    db.insert_signal(source="news", market_id="0xabc", direction="YES",
+                     confidence=0.72, edge_estimate=0.09)
+    accuracy = db.accuracy_by_source()   # {"news": {"hit_rate": 0.70, ...}}
+```
+
+Stores all state in `openpoly.db` (WAL mode). Run `poly db migrate` once after
+upgrading from JSON state files.
+</details>
+
+<details>
+<summary><b>prob_model.py</b> — Calibrated probability + Kelly sizing</summary>
+
+```bash
+python scripts/prob_model.py --market-id ID              # estimate fair value
+python scripts/prob_model.py --market-id ID --balance 500  # + Kelly sizing
+python scripts/prob_model.py --market-id ID --show-signals  # factor breakdown
+python scripts/prob_model.py --market-id ID --json         # machine-readable
+python scripts/prob_model.py --market-id ID --save         # save to DB
+```
+
+Algorithm: market price → Bayesian prior → weighted signal updates (news/AI/arb)
+→ source credibility from DB accuracy table → time decay on old signals →
+shrinkage toward market price → quarter-Kelly position size.
+
+```python
+from prob_model import estimate
+
+result = estimate(market_id="0xabc", balance=500)
+print(result["fair_prob"])       # 0.61
+print(result["edge"])            # +0.09
+print(result["suggested_size"])  # 22.50  USDC
+```
+
+Run `poly prob --market-id ID --balance N` before sizing any trade.
+</details>
+
 ---
 
 ## Project structure
@@ -635,7 +691,9 @@ OpenPoly/
     │
     ├── backtest.py            # replay signals on price history
     ├── eval.py                # post-resolution hit-rate scoring
-    └── risk_guard.py          # daily loss limit + kill switch
+    ├── risk_guard.py          # daily loss limit + kill switch
+    ├── db.py                  # unified SQLite data layer
+    └── prob_model.py          # calibrated fair-probability + Kelly sizing
 ```
 
 ---
