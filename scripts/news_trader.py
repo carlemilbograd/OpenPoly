@@ -1,294 +1,101 @@
 #!/usr/bin/env python3
 """
-news_trader.py — Real-time news monitor that detects probability-shifting
-events and automatically trades on Polymarket before the crowd reacts.
+news_trader.py — News-driven Polymarket trader (pipeline edition)
 
-Sources monitored:
-  • RSS feeds (configurable list in news_sources.json)
-  • Nitter (Twitter/X via public RSS — no API key needed)
-  • Government announcements (whitehouse.gov, SEC, Fed, SCOTUS)
-  • Custom keyword watchlist
+Sources: GDELT (no key) + NewsAPI (optional) + RSS (configurable)
 
-Workflow:
-  1. Poll all sources for new stories
-  2. Score each story's relevance to active Polymarket questions
-  3. Estimate probability shift implied by the news
-  4. Compare estimate to current market price
-  5. If gap > min_edge: execute trade (BUY the underpriced side)
-  6. Save seen story IDs to avoid duplicate trades
+Pipeline layers
+  L1  Ingest     GDELT broad-sweep + NewsAPI articles + RSS feeds
+  L2  Normalize  fingerprint, dedup, age-filter, source-trust weight
+  L2b Cluster    group near-identical stories -> one representative
+  L3  Map        story -> active Polymarket markets (Gamma API)
+  L4  Score      5-factor impact (trust x novelty x relevance x specificity x urgency)
+      Gate       edge vs current orderbook (slippage + fees + safety buffer)
 
 Usage:
   python scripts/news_trader.py --once                         # single scan + trade cycle
   python scripts/news_trader.py --loop --interval 3            # run every 3 minutes
   python scripts/news_trader.py --loop --interval 5 --dry-run  # simulate only
-  python scripts/news_trader.py --sources                       # list configured sources
-  python scripts/news_trader.py --add-source "https://..."      # add RSS feed
-  python scripts/news_trader.py --history --limit 20            # show recent news matches
+  python scripts/news_trader.py --sources                      # list configured RSS sources
+  python scripts/news_trader.py --add-source "https://..."     # add RSS feed
+  python scripts/news_trader.py --history --limit 20           # show recent news matches
 """
-import sys, os, json, time, argparse, hashlib, requests, re
+import sys, json, time, argparse, logging
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
-from xml.etree import ElementTree as ET
+from datetime import datetime, timezone
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _client import GAMMA_API, get_client
-from _utils import SKILL_DIR, LOG_DIR, FEE, load_json, save_json, get_mid
+from _client import get_client
+from _utils  import SKILL_DIR, LOG_DIR, load_json, save_json
 
+from news.sources.rss import DEFAULT_FEEDS
+from news.pipeline     import run_pipeline, PipelineResult
+from py_clob_client.clob_types  import OrderArgs, OrderType
+from py_clob_client.order_builder.constants import BUY
+
+# -- Logging ------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s  %(levelname)-7s  %(name)s -- %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(LOG_DIR / "news_trader.log"),
+    ],
+)
+log = logging.getLogger("news_trader")
+
+# -- State --------------------------------------------------------------------
 STATE_FILE   = SKILL_DIR / "news_trader_state.json"
 SOURCES_FILE = SKILL_DIR / "news_sources.json"
-MAX_AGE  = 43200  # ignore stories older than 12 hours (seconds)
 
-# ── Default news source catalogue ─────────────────────────────────────────────
-DEFAULT_SOURCES = [
-    # Government / Policy
-    {"label": "White House",      "url": "https://www.whitehouse.gov/feed/", "type": "rss"},
-    {"label": "SEC News",         "url": "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=8-K&dateb=&owner=include&count=10&search_text=&output=atom", "type": "rss"},
-    {"label": "Federal Reserve",  "url": "https://www.federalreserve.gov/feeds/press_all.xml", "type": "rss"},
-    {"label": "SCOTUS SCOTUSblog","url": "https://www.scotusblog.com/feed/", "type": "rss"},
-    # Finance / Crypto
-    {"label": "CoinDesk",         "url": "https://www.coindesk.com/arc/outboundfeeds/rss/", "type": "rss"},
-    {"label": "Reuters Business", "url": "https://feeds.reuters.com/reuters/businessNews", "type": "rss"},
-    {"label": "Reuters Politics", "url": "https://feeds.reuters.com/Reuters/PoliticsNews",  "type": "rss"},
-    {"label": "AP Top News",      "url": "https://rsshub.app/apnews/topics/apf-topnews", "type": "rss"},
-    {"label": "Politico",         "url": "https://www.politico.com/rss/politics08.xml", "type": "rss"},
-    # Crypto / Market
-    {"label": "The Block",        "url": "https://www.theblock.co/rss.xml", "type": "rss"},
-    {"label": "Decrypt",          "url": "https://decrypt.co/feed", "type": "rss"},
-    # Nitter (Twitter/X public RSS for key accounts — no API key)
-    {"label": "Nitter: Trump",    "url": "https://nitter.privacyredirect.com/realDonaldTrump/rss", "type": "nitter"},
-    {"label": "Nitter: FedReserve","url": "https://nitter.privacyredirect.com/federalreserve/rss", "type": "nitter"},
-    {"label": "Nitter: SECGov",   "url": "https://nitter.privacyredirect.com/SECGov/rss", "type": "nitter"},
-    {"label": "Nitter: POTUS",    "url": "https://nitter.privacyredirect.com/POTUS/rss", "type": "nitter"},
-]
+_DEFAULT_STATE = {"seen_ids": [], "trade_log": [], "last_run": None}
 
-# ── Category keyword → probability shift magnitude ────────────────────────────
-# Higher value = larger expected market move when this keyword fires.
-KEYWORD_SIGNALS = [
-    {"keywords": ["wins", "elected", "victory", "won the"],          "magnitude": 0.20, "bullish": True},
-    {"keywords": ["loses", "defeated", "concedes", "lost"],           "magnitude": 0.20, "bullish": False},
-    {"keywords": ["arrest", "indicted", "charged", "convicted"],      "magnitude": 0.15, "bullish": False},
-    {"keywords": ["resign", "steps down", "withdraws", "drops out"],  "magnitude": 0.15, "bullish": False},
-    {"keywords": ["rate hike", "raises rates", "tightening"],         "magnitude": 0.08, "bullish": True},  # for "rate hike" markets
-    {"keywords": ["rate cut", "cuts rates", "easing", "dovish"],      "magnitude": 0.08, "bullish": True},
-    {"keywords": ["ceasefire", "peace deal", "agreement signed"],     "magnitude": 0.15, "bullish": True},
-    {"keywords": ["war declared", "invasion", "military strikes"],    "magnitude": 0.15, "bullish": False},
-    {"keywords": ["etf approved", "sec approves", "approved bitcoin"],"magnitude": 0.12, "bullish": True},
-    {"keywords": ["ban", "crackdown", "sanctions", "seized"],         "magnitude": 0.10, "bullish": False},
-    {"keywords": ["breakthrough", "cure", "vaccine", "fda approves"], "magnitude": 0.10, "bullish": True},
-    {"keywords": ["bankruptcy", "collapse", "default", "insolvency"], "magnitude": 0.15, "bullish": False},
-    {"keywords": ["ipo", "merger", "acquisition", "takeover"],        "magnitude": 0.06, "bullish": True},
-    {"keywords": ["earthquake", "hurricane", "disaster"],             "magnitude": 0.05, "bullish": False},
-]
 
-# ── State ─────────────────────────────────────────────────────────────────────
 def load_state() -> dict:
-    return load_json(STATE_FILE, {"seen_ids": [], "trade_log": [], "last_run": None})
+    return load_json(STATE_FILE, _DEFAULT_STATE)
 
-
-def save_state(state: dict):
-    save_json(STATE_FILE, state)
-
-
-def story_id(title: str, url: str) -> str:
-    return hashlib.sha256(f"{title}{url}".encode()).hexdigest()[:16]
-
+def save_state(s: dict):
+    save_json(STATE_FILE, s)
 
 def load_sources() -> list:
-    if SOURCES_FILE.exists():
-        try:
-            return json.loads(SOURCES_FILE.read_text())
-        except Exception:
-            pass
-    sources = DEFAULT_SOURCES[:]
-    SOURCES_FILE.write_text(json.dumps(sources, indent=2))
-    return sources
+    saved = load_json(SOURCES_FILE, [])
+    return saved if saved else list(DEFAULT_FEEDS)
+
+def save_sources(feeds: list):
+    save_json(SOURCES_FILE, feeds)
 
 
-def save_sources(sources: list):
-    SOURCES_FILE.write_text(json.dumps(sources, indent=2))
+# -- Execute a PipelineResult -------------------------------------------------
+def execute_result(pr: PipelineResult, budget: float, client, dry_run: bool) -> dict:
+    market    = pr.market
+    shift     = pr.shift or {}
+    token_ids = market.get("clobTokenIds") or []
+    token_id  = token_ids[0] if token_ids else None
+    direction = shift.get("direction", "YES")
+    price     = pr.current_price if direction == "YES" else round(1.0 - pr.current_price, 4)
 
-
-# ── RSS / Nitter fetching ─────────────────────────────────────────────────────
-def fetch_rss(url: str, label: str) -> list:
-    """Return list of {"title", "link", "published", "summary"} from RSS."""
-    try:
-        resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
-        if not resp.ok:
-            return []
-        root = ET.fromstring(resp.text)
-        ns   = {"atom": "http://www.w3.org/2005/Atom"}
-        items = []
-
-        # RSS 2.0
-        for item in root.findall(".//item"):
-            title   = (item.findtext("title") or "").strip()
-            link    = item.findtext("link") or ""
-            pub     = item.findtext("pubDate") or ""
-            summary = (item.findtext("description") or "").strip()[:500]
-            if title:
-                items.append({"title": title, "link": link, "published": pub,
-                               "summary": summary, "source": label})
-        # Atom
-        for entry in root.findall("atom:entry", ns) or root.findall(".//entry"):
-            title   = (entry.findtext("atom:title", namespaces=ns) or
-                       entry.findtext("title") or "").strip()
-            link    = ""
-            for lnk in entry.findall("atom:link", ns) or entry.findall("link"):
-                href = lnk.get("href", "")
-                if href:
-                    link = href
-                    break
-            pub     = (entry.findtext("atom:updated", namespaces=ns) or
-                       entry.findtext("atom:published", namespaces=ns) or
-                       entry.findtext("updated") or "")
-            summary = (entry.findtext("atom:summary", namespaces=ns) or
-                       entry.findtext("summary") or "").strip()[:500]
-            if title:
-                items.append({"title": title, "link": link, "published": pub,
-                               "summary": summary, "source": label})
-        return items[:20]   # cap at 20 per source
-    except Exception:
-        return []
-
-
-def fetch_all_stories(sources: list) -> list:
-    all_stories = []
-    for src in sources:
-        stories = fetch_rss(src["url"], src["label"])
-        all_stories.extend(stories)
-    return all_stories
-
-
-# ── Score stories against Polymarket questions ────────────────────────────────
-def score_story(story: dict, market_question: str) -> tuple[float, dict | None]:
-    """
-    Returns (relevance_score 0–1, signal_dict or None).
-    relevance_score: how closely this story relates to the market question.
-    signal: the detected keyword signal if any.
-    """
-    combined = (story["title"] + " " + story.get("summary", "")).lower()
-    question = market_question.lower()
-
-    # Split question into key words (3+ chars, not stopwords)
-    stopwords = {"the", "a", "an", "is", "are", "will", "would", "who", "what",
-                 "when", "where", "why", "how", "by", "in", "to", "of", "for",
-                 "and", "or", "not", "yes", "no", "at", "on", "with", "that"}
-    q_words = [w for w in re.findall(r'\b[a-z]{3,}\b', question) if w not in stopwords]
-
-    if not q_words:
-        return 0.0, None
-
-    # Count how many key question words appear in the story
-    hits = sum(1 for w in q_words if w in combined)
-    relevance = hits / len(q_words)
-
-    # Check for a keyword signal
-    detected_signal = None
-    for sig in KEYWORD_SIGNALS:
-        if any(kw in combined for kw in sig["keywords"]):
-            detected_signal = sig
-            break
-
-    return min(1.0, relevance), detected_signal
-
-
-def find_matching_markets(story: dict, min_relevance: float = 0.25) -> list:
-    """Search Gamma API for markets related to this story's content."""
-    search_text = story["title"][:60]
-    try:
-        resp = requests.get(
-            f"{GAMMA_API}/markets",
-            params={"search": search_text, "active": "true", "limit": 10},
-            timeout=10,
-        )
-        if not resp.ok:
-            return []
-        markets = resp.json()
-    except Exception:
-        return []
-
-    results = []
-    for m in (markets if isinstance(markets, list) else []):
-        q = m.get("question", "")
-        relevance, signal = score_story(story, q)
-        if relevance >= min_relevance and signal:
-            tokens = m.get("tokens", [])
-            yes_token = tokens[0].get("token_id", "") if tokens else ""
-            no_token  = tokens[1].get("token_id", "") if len(tokens) > 1 else ""
-            results.append({
-                "market_id":    m.get("id", ""),
-                "question":     q,
-                "yes_token":    yes_token,
-                "no_token":     no_token,
-                "relevance":    round(relevance, 3),
-                "signal":       signal,
-            })
-
-    results.sort(key=lambda x: x["relevance"], reverse=True)
-    return results[:5]
-
-
-# ── Estimate probability shift ────────────────────────────────────────────────
-def estimate_shift(match: dict, current_price: float) -> dict | None:
-    """
-    Given a signal and current YES price, estimate whether there's an edge.
-    Returns trade instruction or None.
-    """
-    signal = match["signal"]
-    mag    = signal["magnitude"]
-    bullish = signal["bullish"]
-
-    # Estimate where price SHOULD be after market digests this news
-    if bullish:
-        target = min(0.97, current_price + mag)
-        side   = "BUY_YES"  # underpriced YES
-        edge   = target - current_price
-    else:
-        target = max(0.03, current_price - mag)
-        side   = "BUY_NO"   # overpriced YES → buy the NO
-        edge   = current_price - target
-
-    net = edge - FEE
-    if net <= 0:
-        return None
-
-    return {
-        "side":          side,
-        "current_price": round(current_price, 4),
-        "target_price":  round(target, 4),
-        "edge":          round(edge, 4),
-        "net_edge":      round(net, 4),
-        "signal_kw":     signal["keywords"][0],
-    }
-
-
-# ── Execute trade ──────────────────────────────────────────────────────────────
-def execute_trade(match: dict, instruction: dict, budget: float,
-                  client, dry_run: bool) -> dict:
-    from py_clob_client.clob_types import OrderArgs, OrderType
-    from py_clob_client.order_builder.constants import BUY
-
-    token_id = match["yes_token"] if instruction["side"] == "BUY_YES" else match["no_token"]
-    price    = instruction["current_price"]
-    if instruction["side"] == "BUY_NO":
-        price = 1.0 - price   # NO price = 1 - YES price
-
-    label  = "YES" if instruction["side"] == "BUY_YES" else "NO"
-    result = {
-        "market":    match["question"][:60],
-        "side":      instruction["side"],
+    record = {
+        "market":    market.get("question", "")[:70],
+        "market_id": market.get("id", ""),
+        "direction": direction,
         "price":     price,
+        "edge":      pr.edge,
+        "impact":    pr.scores.get("impact"),
         "budget":    budget,
-        "net_edge":  instruction["net_edge"],
         "dry_run":   dry_run,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
+    if not token_id:
+        record.update({"status": "skip", "reason": "no clobTokenId"})
+        return record
+
     if dry_run:
-        print(f"    [DRY-RUN] Would BUY {label} {match['question'][:50]} @ {price:.4f} "
-              f"(${budget:.2f}, net edge {instruction['net_edge']*100:.1f}%)")
-        result["status"] = "dry_run"
-        return result
+        print(f"      [DRY-RUN] BUY {direction} {market.get('question','')[:55]}")
+        print(f"               @ {price:.4f}  |  ${budget:.2f}  |  "
+              f"edge {pr.edge:.1%}  |  impact {pr.scores.get('impact',0):.3f}")
+        record["status"] = "dry_run"
+        return record
 
     try:
         o_args = OrderArgs(token_id=token_id, price=round(price, 4),
@@ -296,130 +103,177 @@ def execute_trade(match: dict, instruction: dict, budget: float,
         signed = client.create_order(o_args)
         resp   = client.post_order(signed, OrderType.GTC)
         oid    = (resp or {}).get("orderID") or (resp or {}).get("id", "?")
-        print(f"    ✅ Placed {label} order {str(oid)[:20]}  ${budget:.2f}  @ {price:.4f}")
-        result["status"]   = "placed"
-        result["order_id"] = str(oid)
-    except Exception as e:
-        print(f"    ❌ Order failed: {e}")
-        result["status"] = "error"
-        result["error"]  = str(e)
-    return result
+        print(f"      OK Placed {direction} order {str(oid)[:20]}  ${budget:.2f}  @ {price:.4f}")
+        record.update({"status": "placed", "order_id": str(oid)})
+    except Exception as exc:
+        print(f"      FAIL Order failed: {exc}")
+        record.update({"status": "error", "error": str(exc)})
+
+    return record
 
 
-# ── Main cycle ────────────────────────────────────────────────────────────────
+# -- One scan + trade cycle ---------------------------------------------------
 def run_cycle(args, client, state: dict) -> dict:
-    sources    = load_sources()
-    print(f"\n  [{datetime.now().strftime('%H:%M:%S')}] Fetching stories from {len(sources)} sources...")
-    all_stories = fetch_all_stories(sources)
-    print(f"  Fetched {len(all_stories)} total stories")
+    seen_ids = set(state.get("seen_ids") or [])
+    sources  = load_sources()
 
-    new_stories = [s for s in all_stories if story_id(s["title"], s["link"]) not in state["seen_ids"]]
-    print(f"  New (unseen): {len(new_stories)}")
+    print(f"\n  [{datetime.now().strftime('%H:%M:%S')}] Starting pipeline  "
+          f"({len(sources)} RSS feeds + GDELT + NewsAPI)...")
 
-    actions_taken = 0
-    for story in new_stories:
-        sid = story_id(story["title"], story["link"])
-        state["seen_ids"].append(sid)
-        # Keep seen_ids from growing unbounded
-        if len(state["seen_ids"]) > 5000:
-            state["seen_ids"] = state["seen_ids"][-3000:]
+    results, new_seen = run_pipeline(
+        client=client,
+        rss_feeds=sources,
+        newsapi_key=args.newsapi_key or None,
+        max_age_secs=args.max_age * 60,
+        seen_ids=seen_ids,
+        min_impact=args.min_impact,
+        min_relevance=args.min_relevance,
+        min_edge=args.min_edge,
+        budget_per_trade=args.budget,
+        safety_buffer=args.safety_buffer,
+        skip_slippage=args.skip_slippage,
+        dry_run=args.dry_run,
+    )
 
-        matches = find_matching_markets(story, min_relevance=args.min_relevance)
-        if not matches:
-            continue
+    actionable = [r for r in results if r.actionable]
+    print(f"  Pipeline: {len(results)} signal(s) mapped, {len(actionable)} actionable")
 
-        print(f"\n  📰 [{story['source']}] {story['title'][:80]}")
-        for match in matches:
-            token_id = match["yes_token"]
-            if not token_id:
-                continue
+    trades_taken = 0
+    for pr in actionable:
+        story  = pr.story
+        market = pr.market
+        print(f"\n  NEWS  [{story.get('source','?')}] {story['title'][:80]}")
+        print(f"        Market  : {market.get('question','')[:65]}")
+        print(f"        Price   : {pr.current_price:.3f}  ->  est. {pr.shift['target_price']:.3f}"
+              f"  (edge {pr.edge:.1%})")
+        print(f"        Scores  : impact={pr.scores['impact']:.3f}  "
+              f"trust={pr.scores['trust']:.2f}  novelty={pr.scores['novelty']:.2f}  "
+              f"relevance={pr.scores['relevance']:.2f}  "
+              f"specificity={pr.scores['specificity']:.2f}")
 
-            current_price = get_mid(client, token_id)
-            if current_price is None:
-                continue
+        record = execute_result(pr, args.budget, client, args.dry_run)
+        state["trade_log"].append(record)
+        if len(state["trade_log"]) > 500:
+            state["trade_log"] = state["trade_log"][-500:]
+        trades_taken += 1
 
-            instruction = estimate_shift(match, current_price)
-            if not instruction or instruction["net_edge"] < args.min_edge:
-                continue
-
-            print(f"  🎯 Signal '{instruction['signal_kw']}'  |  "
-                  f"relevance {match['relevance']:.0%}  |  "
-                  f"net edge {instruction['net_edge']*100:.1f}%")
-            print(f"     Market: {match['question'][:65]}")
-            print(f"     Price now: {instruction['current_price']:.3f} → est. after: {instruction['target_price']:.3f}")
-
-            logged = execute_trade(match, instruction, args.budget, client, args.dry_run)
-            state["trade_log"].append(logged)
-            if len(state["trade_log"]) > 500:
-                state["trade_log"] = state["trade_log"][-500:]
-            actions_taken += 1
-
+    # Persist seen IDs (cap at 10 000)
+    full_seen = list(new_seen)
+    if len(full_seen) > 10_000:
+        full_seen = full_seen[-8_000:]
+    state["seen_ids"] = full_seen
     state["last_run"] = datetime.now(timezone.utc).isoformat()
-    print(f"\n  Cycle complete — {actions_taken} trade action(s) taken.\n")
+    print(f"\n  Cycle complete -- {trades_taken} trade action(s).\n")
     return state
 
 
-# ── CLI ────────────────────────────────────────────────────────────────────────
+# -- CLI ----------------------------------------------------------------------
 def main():
-    parser = argparse.ArgumentParser(description="News-driven Polymarket trader")
-    parser.add_argument("--once",          action="store_true", help="Run a single cycle then exit")
-    parser.add_argument("--loop",          action="store_true", help="Run continuously")
-    parser.add_argument("--interval",      type=float, default=5.0, help="Minutes between cycles (default 5)")
-    parser.add_argument("--dry-run",       action="store_true", help="Analyse but do not place orders")
-    parser.add_argument("--budget",        type=float, default=25.0, help="USDC per trade (default 25)")
-    parser.add_argument("--min-edge",      type=float, default=0.04, help="Min net edge to trade (0.04=4%%)")
-    parser.add_argument("--min-relevance", type=float, default=0.30, help="Min relevance score (0.30=30%%)")
-    parser.add_argument("--sources",       action="store_true", help="List configured news sources")
-    parser.add_argument("--add-source",    metavar="URL", help="Add an RSS feed URL")
-    parser.add_argument("--source-label",  default="Custom", help="Label for --add-source")
-    parser.add_argument("--history",       action="store_true", help="Show recent trade history")
-    parser.add_argument("--limit",         type=int, default=20, help="Lines for --history")
-    args = parser.parse_args()
+    p = argparse.ArgumentParser(
+        description="News-driven Polymarket trader (pipeline edition)")
 
+    # Run modes
+    p.add_argument("--once",          action="store_true",
+                   help="Run one cycle then exit")
+    p.add_argument("--loop",          action="store_true",
+                   help="Run continuously")
+    p.add_argument("--interval",      type=float, default=5.0,
+                   help="Minutes between cycles (default 5)")
+
+    # Trade settings
+    p.add_argument("--dry-run",       action="store_true",
+                   help="Analyse only; no orders placed")
+    p.add_argument("--budget",        type=float, default=25.0,
+                   help="USDC per trade (default 25)")
+    p.add_argument("--min-edge",      type=float, default=0.06,
+                   help="Min estimated edge (default 0.06)")
+    p.add_argument("--min-relevance", type=float, default=0.15,
+                   help="Min story-market relevance (default 0.15)")
+    p.add_argument("--min-impact",    type=float, default=0.15,
+                   help="Min pipeline impact score (default 0.15)")
+    p.add_argument("--safety-buffer", type=float, default=0.02,
+                   help="Extra edge over fees+slippage (default 0.02)")
+    p.add_argument("--max-age",       type=float, default=60.0,
+                   help="Max story age in minutes (default 60)")
+
+    # Source overrides
+    p.add_argument("--newsapi-key",   default="",
+                   help="NewsAPI.org key (or set NEWSAPI_KEY env var)")
+    p.add_argument("--skip-slippage", action="store_true",
+                   help="Skip execution_simulator gate")
+
+    # Management commands
+    p.add_argument("--sources",       action="store_true",
+                   help="List configured RSS sources")
+    p.add_argument("--add-source",    metavar="URL",
+                   help="Add an RSS feed URL")
+    p.add_argument("--source-label",  default="Custom",
+                   help="Label for --add-source")
+    p.add_argument("--source-trust",  type=float, default=0.6,
+                   help="Trust score for --add-source (0-1)")
+    p.add_argument("--history",       action="store_true",
+                   help="Show recent trade + signal history")
+    p.add_argument("--limit",         type=int, default=20,
+                   help="Rows for --history")
+    p.add_argument("--json",          action="store_true",
+                   help="Output --history as JSON")
+
+    args  = p.parse_args()
     state = load_state()
 
+    # Info commands
     if args.history:
-        log = state.get("trade_log", [])
-        print(f"\n  Last {args.limit} trades:\n")
-        for t in log[-args.limit:]:
-            status = "DRY" if t.get("dry_run") else t.get("status","?").upper()
-            print(f"  [{t['timestamp'][:19]}] {status:8}  {t['side']:<10}  "
-                  f"{t.get('net_edge',0)*100:>5.1f}%  {t['market'][:55]}")
-        print()
+        entries = state.get("trade_log", [])[-args.limit:]
+        if args.json:
+            print(json.dumps(entries, indent=2))
+        else:
+            print(f"\n  Last {len(entries)} trade/signal records:\n")
+            for t in entries:
+                tag = "DRY" if t.get("dry_run") else t.get("status", "?").upper()
+                print(f"  [{t['timestamp'][:19]}]  {tag:<8}  "
+                      f"{t.get('direction',''):<4}  "
+                      f"edge {t.get('edge',0):.1%}  "
+                      f"{t.get('market','')[:55]}")
+            print()
         return
 
     if args.sources:
-        sources = load_sources()
-        print(f"\n  Configured news sources ({len(sources)}):\n")
-        for i, s in enumerate(sources, 1):
-            print(f"  {i:>3}.  {s['label']:<25}  {s['type']:<8}  {s['url'][:60]}")
+        feeds = load_sources()
+        print(f"\n  Configured RSS sources ({len(feeds)}):\n")
+        for i, f in enumerate(feeds, 1):
+            print(f"  {i:>3}.  {f.get('label','?'):<28}  "
+                  f"trust={f.get('trust',0.6):.2f}  {f['url'][:60]}")
         print()
         return
 
     if args.add_source:
-        sources = load_sources()
-        sources.append({"label": args.source_label, "url": args.add_source, "type": "rss"})
-        save_sources(sources)
-        print(f"  ✅ Added: [{args.source_label}] {args.add_source}")
+        feeds = load_sources()
+        feeds.append({"url": args.add_source,
+                      "label": args.source_label,
+                      "trust": args.source_trust})
+        save_sources(feeds)
+        print(f"  Added [{args.source_label}]  "
+              f"trust={args.source_trust}  {args.add_source}")
         return
 
-    authenticated = not args.dry_run
-    client = get_client(authenticated=authenticated)
+    # Trading loop
+    if not (args.once or args.loop):
+        p.print_help()
+        return
 
-    if args.once or args.loop:
-        try:
-            while True:
-                state = run_cycle(args, client, state)
-                save_state(state)
-                if args.once:
-                    break
-                print(f"  Sleeping {args.interval:.1f} min...")
-                time.sleep(args.interval * 60)
-        except KeyboardInterrupt:
+    client = get_client(authenticated=not args.dry_run)
+
+    try:
+        while True:
+            state = run_cycle(args, client, state)
             save_state(state)
-            print("\n  Stopped.\n")
-    else:
-        parser.print_help()
+            if args.once:
+                break
+            print(f"  Sleeping {args.interval:.1f} min ...")
+            time.sleep(args.interval * 60)
+    except KeyboardInterrupt:
+        save_state(state)
+        print("\n  Stopped.\n")
 
 
 if __name__ == "__main__":

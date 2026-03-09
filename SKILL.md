@@ -515,33 +515,52 @@ python scripts/correlation_arbitrage.py --once                    # single-shot 
 
 ---
 
-## 21. news_trader.py — News-Driven Probability Trading
+## 21. news_trader.py — News-Driven Probability Trading (4-layer pipeline)
 
-**Purpose**: Monitor RSS feeds, public Twitter/X (via Nitter), government feeds, and crypto news.
-When important news is detected, scores it against active Polymarket questions, estimates
-the implied probability shift, and trades before the market reprices.
+**Purpose**: Full event-driven trading pipeline. Ingests GDELT + NewsAPI + RSS feeds,
+deduplicates stories by fingerprint, clusters near-identical reports, maps each cluster to
+active Polymarket markets, scores impact on 5 factors, and gates execution on edge vs
+orderbook slippage.
+
+**Pipeline layers** (in `scripts/news/`):
+- `sources/gdelt.py` — GDELT DOC 2.0 API (no API key, ~15-min index lag)
+- `sources/newsapi.py` — NewsAPI.org articles (free key: 100 req/day)
+- `sources/rss.py` — 15 default high-trust RSS feeds (White House, Fed, Reuters, AP, etc.)
+- `normalize.py` — fingerprint dedup + source trust weights (~60 domains)
+- `cluster.py` — Jaccard token-set clustering; one representative per event
+- `mapper.py` — keyword extraction + Gamma API search → story↔market relevance
+- `score.py` — 5-factor impact: trust × novelty × relevance × specificity × urgency
+- `pipeline.py` — orchestrate all layers; slippage gate via `execution_simulator`
 
 **When to use**:
-- When user asks to "trade on news" or "monitor news feeds"
-- When user wants to set up real-time event-driven trading
-- Pairs with `scheduler.py --once` every 3–5 minutes for continuous monitoring
+- When user asks to "trade on news", "monitor news feeds", or "event-driven trading"
+- When user wants real-time probability shift detection
+- Pairs with `scheduler.py --once` every 3–5 minutes
 
 **Commands**:
 ```bash
-python scripts/news_trader.py --once                          # single news scan cycle
+python scripts/news_trader.py --once                          # single pipeline cycle
 python scripts/news_trader.py --loop --interval 5             # poll every 5 minutes
 python scripts/news_trader.py --loop --interval 5 --dry-run   # simulate only
-python scripts/news_trader.py --sources                        # list active feeds
-python scripts/news_trader.py --add-source "URL" --source-label "Name"
+python scripts/news_trader.py --sources                        # list active RSS feeds
+python scripts/news_trader.py --add-source "URL" --source-label "Name" --source-trust 0.8
 python scripts/news_trader.py --history --limit 20            # show recent trades
+python scripts/news_trader.py --history --json                # JSON output
 ```
 
-**Arguments**:
+**Key arguments**:
 - `--budget` float (default 25): USDC per trade
-- `--min-edge` float (default 0.04): minimum net edge to trade
-- `--min-relevance` float (default 0.30): minimum story↔market relevance score
+- `--min-edge` float (default 0.06): minimum estimated price gap to trade
+- `--min-relevance` float (default 0.15): minimum story↔market token overlap
+- `--min-impact` float (default 0.15): minimum 5-factor impact score
+- `--safety-buffer` float (default 0.02): extra edge required above fees+slippage
+- `--max-age` float (default 60): max story age in minutes
+- `--newsapi-key` str: NewsAPI.org key (or set `NEWSAPI_KEY` env var)
+- `--skip-slippage`: bypass execution_simulator gate
 
-**State files**: `news_trader_state.json` (seen story IDs, trade log), `news_sources.json` (feed URLs).
+**State files**: `news_trader_state.json` (seen IDs, trade log), `news_sources.json` (feed URLs).
+**GDELT**: free, no key, covers 65+ languages. Best for breaking political/macro events.
+**NewsAPI**: optional. Set `NEWSAPI_KEY` in `.env` for richer article metadata.
 
 ---
 

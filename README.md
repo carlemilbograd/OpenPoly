@@ -36,7 +36,14 @@ OpenPoly/
     ├── watchlist.py              # persistent price alerts with polling
     ├── execution_simulator.py    # orderbook slippage simulation + optimal sizing
     ├── correlation_arbitrage.py  # cross-market correlated-pair arbitrage
-    ├── news_trader.py            # news-driven trades (RSS, Nitter, gov feeds)
+    ├── news_trader.py            # news-driven trades — thin CLI wrapping news/
+    ├── news/                     # 4-layer pipeline package
+    │   ├── sources/              #   gdelt.py  newsapi.py  rss.py
+    │   ├── normalize.py          #   dedup + source trust weights
+    │   ├── cluster.py            #   Jaccard story clustering
+    │   ├── mapper.py             #   story -> Polymarket market mapping
+    │   ├── score.py              #   5-factor impact scoring
+    │   └── pipeline.py           #   orchestrate all layers
     ├── market_maker.py           # bid/ask spread earning with inventory control
     ├── ai_automation.py          # AI signal generation and automated execution
     └── omni_strategy.py          # all-in-one strategy orchestrator
@@ -354,16 +361,21 @@ python scripts/correlation_arbitrage.py --graph                   # print full c
 python scripts/correlation_arbitrage.py --once                    # single-shot for scheduler
 ```
 
-### `news_trader.py`
-Monitors RSS feeds, Nitter (Twitter/X public RSS), and government announcement feeds. When major news is detected, scores it against active markets, estimates probability shifts, and trades before the crowd reacts.
+### `news_trader.py` + `news/` pipeline
+Full 4-layer event-driven pipeline: **GDELT** (no key) + **NewsAPI** (optional) + **RSS** (15 default high-trust feeds) → deduplicate by fingerprint → cluster identical stories → map to Polymarket markets via Gamma API → 5-factor impact score → slippage gate → trade.
 ```bash
-python scripts/news_trader.py --once                      # single scan cycle
-python scripts/news_trader.py --loop --interval 5         # poll every 5 minutes
-python scripts/news_trader.py --loop --interval 5 --dry-run
-python scripts/news_trader.py --sources                   # list configured feeds
-python scripts/news_trader.py --add-source "https://..." --source-label "My Feed"
+python scripts/news_trader.py --once                         # single pipeline cycle
+python scripts/news_trader.py --loop --interval 5            # poll every 5 minutes
+python scripts/news_trader.py --loop --interval 5 --dry-run  # simulate only
+python scripts/news_trader.py --sources                      # list configured RSS feeds
+python scripts/news_trader.py --add-source "https://..." --source-label "Name" --source-trust 0.8
 python scripts/news_trader.py --history --limit 20
+python scripts/news_trader.py --history --json               # JSON output
 ```
+
+**Pipeline flags**: `--min-edge 0.06`, `--min-impact 0.15`, `--min-relevance 0.15`, `--safety-buffer 0.02`, `--max-age 60` (minutes), `--newsapi-key KEY`, `--skip-slippage`.
+
+GDELT runs without any API key and covers breaking news in 65+ languages. Set `NEWSAPI_KEY` in `.env` for richer article metadata.
 
 ### `market_maker.py`
 Posts a bid slightly below the midpoint and an ask slightly above it. Earns the spread when both sides fill. Inventory control prevents over-exposure by skewing quote sizes when net position is unbalanced.
