@@ -16,10 +16,18 @@ def main():
 
     client = get_client(authenticated=True)
 
-    try:
-        address = client.get_address()
-    except Exception:
-        address = os.getenv("POLYMARKET_FUNDER_ADDRESS", "")
+    # For type 1/2 wallets the maker address in CLOB trades is the
+    # funder/proxy address, NOT the derived signing key address.
+    # Always prefer POLYMARKET_FUNDER_ADDRESS; fall back to signer.
+    address = os.getenv("POLYMARKET_FUNDER_ADDRESS", "")
+    if not address:
+        try:
+            address = client.get_address()
+        except Exception:
+            pass
+    if not address:
+        print("ERROR: set POLYMARKET_FUNDER_ADDRESS in .env")
+        return
 
     params = {"maker": address, "limit": args.limit}
     if args.market_id:
@@ -29,11 +37,14 @@ def main():
     trades = resp.json() if resp.ok else []
 
     if not trades:
-        # Try CLOB trades endpoint
+        # Try CLOB endpoint — pass address explicitly so we never get global trades
         try:
-            trades = client.get_trades(addr=address) or []
-        except Exception:
-            trades = []
+            trades = client.get_trades(maker=address) or []
+        except TypeError:
+            try:
+                trades = client.get_trades(addr=address) or []
+            except Exception:
+                trades = []
 
     if not trades:
         print(f"\n  No trades found for {address[:10]}...\n")

@@ -14,11 +14,17 @@ def fmt_usdc(v):
 def main():
     client = get_client(authenticated=True)
 
-    # Derive wallet address from signer
-    try:
-        address = client.get_address()
-    except Exception:
-        address = os.getenv("POLYMARKET_FUNDER_ADDRESS") or "unknown"
+    # For type 1/2 wallets the positions/trades are associated with the
+    # funder/proxy address, NOT the derived signing key address.
+    # Always prefer POLYMARKET_FUNDER_ADDRESS; fall back to signer.
+    address = os.getenv("POLYMARKET_FUNDER_ADDRESS", "")
+    if not address:
+        try:
+            address = client.get_address()
+        except Exception:
+            pass
+    if not address:
+        address = "unknown"
 
     print(f"\n{'='*55}")
     print(f"  POLYMARKET PORTFOLIO  —  {address[:10]}...{address[-6:]}")
