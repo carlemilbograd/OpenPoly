@@ -51,6 +51,9 @@ No intermediary. No dashboard. Just your agent and a full trading toolkit.
 | **Omni** | One command to launch all strategies with budget split |
 | **Automation** | Scheduler daemon — any script on any interval, background-safe |
 | **Alerts** | Watchlist price alerts + market monitor (volume, arb gaps, extremes) |
+| **Backtesting** | Replay momentum / mean-reversion signals on resolved market price history |
+| **Evaluation** | Post-resolution hit-rate scoring — which sources and strategies made money |
+| **Risk guard** | Max daily loss limit, position caps, manual kill switch, daily PnL log |
 | **On-chain** | Redeem resolved winning positions via Polygon CTF contract |
 
 ---
@@ -498,6 +501,89 @@ Alert log: `logs/monitor_alerts.json`.
 
 ---
 
+### Evaluation & safety
+
+<details>
+<summary><b>backtest.py</b> — Replay strategies on historical prices</summary>
+
+```bash
+# Test on last 25 resolved markets
+python scripts/backtest.py --strategy momentum --limit 25
+python scripts/backtest.py --strategy mean-revert --tag politics
+
+# Single token, custom date range
+python scripts/backtest.py --token-id TOKEN_ID --start 2024-06-01
+
+# Show saved results
+python scripts/backtest.py --results
+python scripts/backtest.py --results --json
+```
+
+Fetches OHLC price history from the public Polymarket CLOB API, applies the
+selected signal rule, simulates fills with spread + fee, and reports:
+hit rate, total PnL, Sharpe ratio, max drawdown, avg PnL per trade.
+
+Results saved to `backtest_results.json`.
+</details>
+
+<details>
+<summary><b>eval.py</b> — Post-resolution signal evaluator</summary>
+
+```bash
+python scripts/eval.py                      # score all pending signals
+python scripts/eval.py --since 7d           # last 7 days only
+python scripts/eval.py --source news        # filter: news | ai | arb | all
+python scripts/eval.py --report             # full accuracy report
+python scripts/eval.py --report --json      # machine-readable
+python scripts/eval.py --reset              # clear log
+```
+
+Reads trade logs from `news_trader_state.json`, `ai_signals.json`, and
+`auto_arbitrage_state.json`, then queries Gamma API for resolved outcomes.
+Compares each signal's predicted direction against what actually happened.
+
+Outputs hit rate by source, per-signal table, running accuracy trend.
+Results appended to `eval_log.json`.
+</details>
+
+<details>
+<summary><b>risk_guard.py</b> — Daily loss limits + kill switch</summary>
+
+```bash
+# Check status
+python scripts/risk_guard.py status
+
+# Configure limits
+python scripts/risk_guard.py set --max-daily-loss 0.05   # 5% daily loss cap
+python scripts/risk_guard.py set --max-position-pct 0.20 # 20% max per trade
+
+# Kill switch
+python scripts/risk_guard.py kill     # halt all trading
+python scripts/risk_guard.py reset    # resume + start new day
+
+# Log a trade's PnL (called by strategy scripts)
+python scripts/risk_guard.py record --pnl -12.50 --balance 500
+
+# Check inline before placing a trade
+python scripts/risk_guard.py check --size 50 --balance 400
+
+# Daily history
+python scripts/risk_guard.py history
+```
+
+Enforces three limits: max daily loss (auto-fires kill switch), max position
+size, and max open orders. Other strategy scripts can import it directly:
+
+```python
+from risk_guard import check_limits, is_killed
+ok, reason = check_limits(trade_size_usd=50, current_balance=400)
+```
+
+Config and daily PnL stored in `risk_state.json`.
+</details>
+
+---
+
 ## Project structure
 
 ```
@@ -545,7 +631,11 @@ OpenPoly/
     ├── market_maker.py
     ├── ai_automation.py
     ├── omni_strategy.py
-    └── scheduler.py
+    ├── scheduler.py
+    │
+    ├── backtest.py            # replay signals on price history
+    ├── eval.py                # post-resolution hit-rate scoring
+    └── risk_guard.py          # daily loss limit + kill switch
 ```
 
 ---

@@ -671,6 +671,114 @@ poly omni --stop                          # terminate all
 
 ---
 
+## 25. backtest.py — Historical Signal Backtesting
+
+**Purpose**: Fetch Polymarket price history for recently resolved markets and replay
+momentum or mean-reversion signals to measure expected performance before risking
+live capital. Reports hit rate, total PnL, Sharpe ratio, and max drawdown.
+
+**When to use**:
+- When user says "test this strategy", "how would X have done", or "backtest momentum"
+- Before turning on a new automation to validate expected edge
+- When comparing strategies to decide on capital allocation
+
+**Commands**:
+```bash
+poly backtest --strategy momentum --limit 25
+poly backtest --strategy mean-revert --limit 25 --tag politics
+poly backtest --token-id TOKEN_ID --strategy momentum
+poly backtest --start 2024-06-01 --position-size 20
+poly backtest --results                          # show last saved run
+poly backtest --results --json                   # machine-readable
+```
+
+**Arguments**:
+- `--strategy` (momentum|mean-revert): signal logic to apply
+- `--limit` int (default 25): number of resolved markets to test
+- `--tag` str: filter by Gamma tag (politics, crypto, sports…)
+- `--start` YYYY-MM-DD: ignore history before this date
+- `--position-size` float (default 10): simulated USD per trade
+- `--fidelity` int (default 3600): price bar size in seconds
+
+**State file**: `backtest_results.json`
+
+---
+
+## 26. eval.py — Post-Resolution Evaluation Loop
+
+**Purpose**: After markets resolve, score every signal and trade OpenPoly generated
+against the actual outcome. Tracks hit rate by source (news/AI/arb), signal
+direction accuracy, and which strategies made money. Builds a running evaluation
+log to measure improvement over time.
+
+**When to use**:
+- After markets close: "how accurate were my signals this week?"
+- When user asks "are the news signals actually working?"
+- To diagnose which strategies are producing alpha vs noise
+- Run weekly alongside the scheduler to maintain an ongoing feedback loop
+
+**Commands**:
+```bash
+poly eval                     # evaluate all pending signals
+poly eval --since 7d          # last 7 days only
+poly eval --source news        # filter by source (news|ai|arb|all)
+poly eval --report             # print full accuracy report from saved log
+poly eval --report --json      # machine-readable report
+poly eval --reset              # clear eval_log.json and start fresh
+```
+
+**State files read**: `news_trader_state.json`, `ai_signals.json`, `auto_arbitrage_state.json`
+**State file written**: `eval_log.json`
+
+**Output**: hit rate by source, per-signal hit/miss table, overall accuracy trend.
+
+---
+
+## 27. risk_guard.py — Daily Loss Limits + Kill Switch
+
+**Purpose**: Safety layer that enforces: max daily loss (as % of day-start balance),
+max single position size, max open orders, and a manual kill switch. Importable
+by other scripts so they can check limits before placing any order.
+
+**When to use**:
+- When user wants to set a loss limit: "stop trading if I lose 5% in a day"
+- When user wants to pause all trading: "halt everything"
+- After a loss event: check status and reset when ready to resume
+- Proactively: set limits before running any automation
+
+**Key limits (configurable)**:
+- `max_daily_loss_pct` (default 5%): auto-fires kill switch when breached
+- `max_position_pct` (default 20%): max trade size as fraction of balance
+- `max_open_orders` (default 50): cap on simultaneously open orders
+
+**Commands**:
+```bash
+poly risk                                        # show current risk status
+poly risk status                                 # same
+poly risk kill                                   # activate kill switch (halt all trading)
+poly risk reset                                  # clear kill switch, start new day
+poly risk set --max-daily-loss 0.05              # configure 5% daily loss limit
+poly risk set --max-position-pct 0.20            # max 20% of balance per trade
+poly risk set --max-open-orders 20               # cap at 20 open orders
+poly risk record --pnl -12.50 --balance 500      # log a trade's PnL
+poly risk history                                # last 30 days PnL history
+poly risk check --size 50 --balance 400          # check if a trade is allowed
+```
+
+**Importable API** (used by other strategy scripts):
+```python
+from risk_guard import check_limits, is_killed
+
+ok, reason = check_limits(trade_size_usd=50, current_balance=400)
+if not ok:
+    print(f"Trade blocked: {reason}")
+    return
+```
+
+**State file**: `risk_state.json`
+
+---
+
 ## Error Handling
 
 - If commands fail with `ModuleNotFoundError`: run `pip install py-clob-client requests python-dotenv web3 --break-system-packages`
@@ -684,5 +792,6 @@ poly omni --stop                          # terminate all
 
 1. **Never place a trade without explicit user confirmation**
 2. **Never invest more than the user specifies**
-3. **Warn the user** that prediction markets carry risk and past performance is not indicative of future results
-4. **Never store private keys in logs or output** — mask as `0x****...****`
+3. **Before starting any automation, recommend the user configure `poly risk set --max-daily-loss 0.05`**
+4. **Warn the user** that prediction markets carry risk and past performance is not indicative of future results
+5. **Never store private keys in logs or output** — mask as `0x****...****`

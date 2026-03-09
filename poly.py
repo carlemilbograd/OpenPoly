@@ -54,6 +54,11 @@ COMMANDS = {
     "mm":           ("market_maker.py",          "Market making / spread capture  [--market-id ID] [--spread 0.02]"),
     "signals":      ("ai_automation.py",         "AI signal generation  [--once] [--execute]"),
     "omni":         ("omni_strategy.py",         "Run ALL strategies  --start --budget 1000 | --status | --stop"),
+
+    # Evaluation & safety
+    "backtest":     ("backtest.py",              "Replay strategies on price history  [--strategy momentum|mean-revert]"),
+    "eval":         ("eval.py",                  "Score signals vs resolved outcomes  [--since 7d] [--report]"),
+    "risk":         ("risk_guard.py",            "Daily loss limits + kill switch  status|kill|reset|set"),
 }
 
 # ── aliases ───────────────────────────────────────────────────────────────────
@@ -78,6 +83,11 @@ ALIASES = {
     "ai":           "signals",
     "all":          "omni",
     "run-all":      "omni",
+    "bt":           "backtest",
+    "evaluate":     "eval",
+    "guard":        "risk",
+    "kill":         "risk",
+    "safety":       "risk",
 }
 
 
@@ -102,6 +112,7 @@ def _print_help():
         ("Trading", ["trade", "cancel", "redeem"]),
         ("Monitoring", ["watch", "monitor"]),
         ("Automation", ["auto-arb", "schedule", "news", "mm", "signals", "omni"]),
+        ("Evaluation & Safety", ["backtest", "eval", "risk"]),
     ]
 
     for section, cmds in sections:
@@ -112,6 +123,7 @@ def _print_help():
             # Truncate description at first  [
             short = desc.split("  ")[0] if "  " in desc else desc
             print(f"  {c:<16} {short}")
+
 
     print()
     print("─" * width)
