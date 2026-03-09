@@ -10,16 +10,16 @@ Logs go to logs/scheduler_YYYY-MM-DD.log.
 
 Usage:
     # Register jobs
-    python scripts/scheduler.py add --name auto_arb   --script auto_arb.py   --args "--min-gap 0.005 --budget-pct 0.05 --once" --interval 15m
-    python scripts/scheduler.py add --name monitor     --script auto_monitor.py --args "--once"   --interval 1h
-    python scripts/scheduler.py add --name exposure    --script exposure.py   --args ""           --interval 6h
-    python scripts/scheduler.py add --name watchlist   --script watchlist.py  --args "check"      --interval 5m
+    python scripts/scheduler.py add --name auto_arbitrage --script auto_arbitrage.py --args "--min-gap 0.005 --budget-pct 0.05 --once" --interval 15m
+    python scripts/scheduler.py add --name monitor        --script auto_monitor.py   --args "--once"   --interval 1h
+    python scripts/scheduler.py add --name exposure       --script exposure.py       --args ""           --interval 6h
+    python scripts/scheduler.py add --name watchlist      --script watchlist.py      --args "check"      --interval 5m
 
     # Manage
-    python scripts/scheduler.py list                  # show all jobs and next-run times
-    python scripts/scheduler.py remove --name auto_arb
-    python scripts/scheduler.py enable  --name auto_arb
-    python scripts/scheduler.py disable --name auto_arb
+    python scripts/scheduler.py list                       # show all jobs and next-run times
+    python scripts/scheduler.py remove --name auto_arbitrage
+    python scripts/scheduler.py enable  --name auto_arbitrage
+    python scripts/scheduler.py disable --name auto_arbitrage
 
     # Run
     python scripts/scheduler.py start               # foreground (blocking) daemon
@@ -362,7 +362,7 @@ def main():
     # add
     p_add = sub.add_parser("add", help="Register a new scheduled job")
     p_add.add_argument("--name",     required=True, help="Unique job name")
-    p_add.add_argument("--script",   required=True, help="Script filename under scripts/ (e.g. auto_arb.py)")
+    p_add.add_argument("--script",   required=True, help="Script filename under scripts/ (e.g. auto_arbitrage.py)")
     p_add.add_argument("--args",     default="",    help="Arguments to pass to the script (quoted string)")
     p_add.add_argument("--interval", default="15m", help="Run interval: 30s | 5m | 15m | 1h | 1d")
     p_add.add_argument("--timeout",  type=int, default=300, help="Max runtime per execution in seconds (default 300)")

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-auto_arb.py — Automated arbitrage bot for Polymarket.
+auto_arbitrage.py — Automated arbitrage bot for Polymarket.
 
 Scans all markets at a configurable interval, executes arbitrage whenever a
 gap exceeds the minimum threshold, risking a given percentage of available
@@ -10,12 +10,12 @@ Can run as a self-contained loop OR as a single-shot script called by
 scheduler.py.
 
 Usage (standalone loop):
-    python scripts/auto_arb.py --interval 15m --min-gap 0.005 --budget-pct 0.10
-    python scripts/auto_arb.py --interval 1h  --min-gap 0.01  --budget-pct 0.05 --dry-run
-    python scripts/auto_arb.py --interval 30s --min-gap 0.003 --budget-pct 0.20 --max-budget 200
+    python scripts/auto_arbitrage.py --interval 15m --min-gap 0.005 --budget-pct 0.10
+    python scripts/auto_arbitrage.py --interval 1h  --min-gap 0.01  --budget-pct 0.05 --dry-run
+    python scripts/auto_arbitrage.py --interval 30s --min-gap 0.003 --budget-pct 0.20 --max-budget 200
 
 Usage (single-shot, called by scheduler.py):
-    python scripts/auto_arb.py --once --min-gap 0.005 --budget-pct 0.10
+    python scripts/auto_arbitrage.py --once --min-gap 0.005 --budget-pct 0.10
 
 Interval format: 30s | 5m | 15m | 1h | 6h | 1d
 """
@@ -34,13 +34,13 @@ MIN_LIQUIDITY  = 5.0     # minimum USDC depth required per leg
 SCAN_LIMIT     = 200     # markets to scan per round
 SKILL_DIR      = Path(__file__).parent.parent
 LOG_DIR        = SKILL_DIR / "logs"
-STATE_FILE     = SKILL_DIR / "auto_arb_state.json"
+STATE_FILE     = SKILL_DIR / "auto_arbitrage_state.json"
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 LOG_DIR.mkdir(exist_ok=True)
-log_path = LOG_DIR / f"auto_arb_{datetime.now().strftime('%Y-%m-%d')}.log"
+log_path = LOG_DIR / f"auto_arbitrage_{datetime.now().strftime('%Y-%m-%d')}.log"
 
-logger = logging.getLogger("auto_arb")
+logger = logging.getLogger("auto_arbitrage")
 logger.setLevel(logging.DEBUG)
 
 _fh = logging.FileHandler(log_path)
@@ -369,7 +369,7 @@ def main():
     # ── Connect ───────────────────────────────────────────────────────────────
     mode = "DRY RUN" if args.dry_run else "LIVE"
     logger.info(
-        f"Starting auto_arb  [{mode}]  interval={args.interval}  "
+        f"Starting auto_arbitrage  [{mode}]  interval={args.interval}  "
         f"min_gap={args.min_gap*100:.2f}%  budget={args.budget_pct*100:.0f}%  "
         f"max_budget={'$'+str(args.max_budget) if args.max_budget else 'none'}"
     )

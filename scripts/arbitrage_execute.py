@@ -14,9 +14,9 @@ Math (binary):
   ROI    = (1 - sum) / sum
 
 Usage:
-  python arb_execute.py --market-id MARKET_ID    # execute for specific market
-  python arb_execute.py --scan                   # scan & pick the best arb
-  python arb_execute.py --scan --min-gap 0.04 --budget 100
+  python arbitrage_execute.py --market-id MARKET_ID    # execute for specific market
+  python arbitrage_execute.py --scan                   # scan & pick the best arb
+  python arbitrage_execute.py --scan --min-gap 0.04 --budget 100
 """
 import sys, argparse, requests, json
 from pathlib import Path

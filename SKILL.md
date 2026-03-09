@@ -239,9 +239,9 @@ Output: Price changes (1h/24h/7d), orderbook depth per outcome, open interest, t
 When the user wants to execute arbitrage (not just find it), "take the arb", "execute the arb trade":
 
 ```bash
-python scripts/arb_execute.py --scan --budget 100         # auto-find best opportunity and ask to execute
-python scripts/arb_execute.py --market-id ID --budget 50  # specific market
-python scripts/arb_execute.py --min-gap 0.04              # minimum gap threshold
+python scripts/arbitrage_execute.py --scan --budget 100         # auto-find best opportunity and ask to execute
+python scripts/arbitrage_execute.py --market-id ID --budget 50  # specific market
+python scripts/arbitrage_execute.py --min-gap 0.04              # minimum gap threshold
 ```
 
 Math: `shares = budget / (p_yes + p_no)`, `profit = shares − budget`.
@@ -281,23 +281,23 @@ Alerts are stored in `watchlist.json` in the skill root. When an alert fires, th
 
 ### 16. Automated Arbitrage Bot
 
-When the user says "run auto arb", "start arbitrage bot", "scan and execute arb every X minutes", "auto arb at Y% threshold":
+When the user says "run auto arbitrage", "start arbitrage bot", "scan and execute arb every X minutes", "auto arbitrage at Y% threshold":
 
 **One-shot (run now, then stop):**
 ```bash
-python scripts/auto_arb.py --once --min-gap 0.005 --budget-pct 0.05
+python scripts/auto_arbitrage.py --once --min-gap 0.005 --budget-pct 0.05
 ```
 
 **Self-contained loop (keeps running):**
 ```bash
-python scripts/auto_arb.py --interval 15m --min-gap 0.005 --budget-pct 0.10
-python scripts/auto_arb.py --interval 1h  --min-gap 0.01  --budget-pct 0.05 --dry-run
-python scripts/auto_arb.py --interval 30s --min-gap 0.003 --budget-pct 0.20 --max-budget 200
+python scripts/auto_arbitrage.py --interval 15m --min-gap 0.005 --budget-pct 0.10
+python scripts/auto_arbitrage.py --interval 1h  --min-gap 0.01  --budget-pct 0.05 --dry-run
+python scripts/auto_arbitrage.py --interval 30s --min-gap 0.003 --budget-pct 0.20 --max-budget 200
 ```
 
 **Check status/history:**
 ```bash
-python scripts/auto_arb.py --status
+python scripts/auto_arbitrage.py --status
 ```
 
 Parameters:
@@ -308,9 +308,9 @@ Parameters:
 - `--tag`: only scan markets with this tag (e.g. politics, crypto)
 - `--dry-run`: simulate only, no orders placed
 
-Logs to `logs/auto_arb_YYYY-MM-DD.log`. State (runs, profits) saved to `auto_arb_state.json`.
+Logs to `logs/auto_arbitrage_YYYY-MM-DD.log`. State (runs, profits) saved to `auto_arbitrage_state.json`.
 
-⚠️ **Always ask the user for `--min-gap`, `--budget-pct`, and `--interval` before starting.** Show a dry-run first if they are new to auto-arb.
+⚠️ **Always ask the user for `--min-gap`, `--budget-pct`, and `--interval` before starting.** Show a dry-run first if they are new to auto arbitrage.
 
 ---
 
@@ -320,10 +320,10 @@ When the user wants to automate ANY script on a recurring schedule — "run X ev
 
 **Register jobs:**
 ```bash
-# Arb bot every 15 minutes at 0.5% gap, risking 5% of balance
+# Auto arbitrage bot every 15 minutes at 0.5% gap, risking 5% of balance
 python scripts/scheduler.py add \
-  --name auto_arb \
-  --script auto_arb.py \
+  --name auto_arbitrage \
+  --script auto_arbitrage.py \
   --args "--min-gap 0.005 --budget-pct 0.05 --once" \
   --interval 15m
 
@@ -360,15 +360,15 @@ python scripts/scheduler.py start                 # foreground (blocking)
 python scripts/scheduler.py list                  # all jobs + next run times
 python scripts/scheduler.py status               # daemon status + job list
 python scripts/scheduler.py stop                 # stop background daemon
-python scripts/scheduler.py disable --name auto_arb
-python scripts/scheduler.py enable  --name auto_arb
-python scripts/scheduler.py remove  --name auto_arb
+python scripts/scheduler.py disable --name auto_arbitrage
+python scripts/scheduler.py enable  --name auto_arbitrage
+python scripts/scheduler.py remove  --name auto_arbitrage
 ```
 
 Job logs are written to `logs/job_<name>_YYYY-MM-DD.log`. Scheduler log at `logs/scheduler_YYYY-MM-DD.log`.
 
-**Typical full setup when user says "run auto arb every 15 minutes at 0.5%":**
-1. `scheduler.py add --name auto_arb --script auto_arb.py --args "--min-gap 0.005 --budget-pct 0.05 --once" --interval 15m`
+**Typical full setup when user says "run auto arbitrage every 15 minutes at 0.5%":**
+1. `scheduler.py add --name auto_arbitrage --script auto_arbitrage.py --args "--min-gap 0.005 --budget-pct 0.05 --once" --interval 15m`
 2. `scheduler.py start --background`
 3. Confirm with `scheduler.py status`
 
@@ -401,7 +401,7 @@ Alert types fired:
 - `PRICE_MOVE` — price moved ≥5pp since last check → suggests `research_agent.py`
 - `NEAR_5050`  — market within 5pp of 50/50 → prime research candidate
 - `EXTREME_LOW/HIGH` — price ≤4% or ≥96% → potential contrarian play
-- `ARB_GAP`    — YES+NO gap above threshold → suggests `arb_execute.py`
+- `ARB_GAP`    — YES+NO gap above threshold → suggests `arbitrage_execute.py`
 - `VOLUME_SPIKE` — 24h volume jumped >50% vs baseline
 
 Parameters:
@@ -436,7 +436,7 @@ Alert log: `logs/monitor_alerts.json`
 
 ### Full Automation Setup (recommend this to users who want hands-off operation)
 1. Register all passive automation jobs with `scheduler.py add`:
-   - `auto_arb.py --once` every 15–30m (captures arb)
+   - `auto_arbitrage.py --once` every 15–30m (captures arb)
    - `auto_monitor.py --once` every 1h (surface opportunities)
    - `watchlist.py check` every 5m (fire price alerts)
    - `exposure.py` every 6h (risk check)
@@ -444,13 +444,13 @@ Alert log: `logs/monitor_alerts.json`
 3. Periodically review: `scheduler.py status` and `auto_monitor.py --alerts --since 24h`
 4. When `auto_monitor.py` fires an ARB_GAP or PRICE_MOVE alert, investigate and act
 
-### Auto-Arb Quick Start
-When a user says "set up auto arb at X% threshold, risking Y% every Z minutes":
+### Auto Arbitrage Quick Start
+When a user says "set up auto arbitrage at X% threshold, risking Y% every Z minutes":
 ```bash
-python scripts/scheduler.py add --name auto_arb --script auto_arb.py \
+python scripts/scheduler.py add --name auto_arbitrage --script auto_arbitrage.py \
   --args "--min-gap X --budget-pct Y --once --dry-run" --interval Zm
 # Have user review dry-run output first, then:
-python scripts/scheduler.py add --name auto_arb --script auto_arb.py \
+python scripts/scheduler.py add --name auto_arbitrage --script auto_arbitrage.py \
   --args "--min-gap X --budget-pct Y --once" --interval Zm
 python scripts/scheduler.py start --background
 ```

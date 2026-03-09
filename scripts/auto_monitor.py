@@ -287,7 +287,7 @@ def run_once(args, client, state: dict, alerts: list):
             print(f"           {a['detail']}")
             # Suggest an action
             if a["kind"] == "ARB_GAP":
-                print(f"           → Run: python scripts/arb_execute.py "
+                print(f"           → Run: python scripts/arbitrage_execute.py "
                       f"--market-id {a['market_id']} --budget 50")
             elif a["kind"] in ("PRICE_MOVE", "NEAR_5050"):
                 print(f"           → Run: python scripts/research_agent.py "
@@ -336,7 +336,7 @@ def show_alerts(args):
     arb_alerts = [a for a in recent if a["kind"] == "ARB_GAP"]
     if arb_alerts:
         print(f"  💡 {len(arb_alerts)} arbitrage gap(s) detected. "
-              f"Run: python scripts/auto_arb.py --once to capture them.\n")
+              f"Run: python scripts/auto_arbitrage.py --once to capture them.\n")
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────

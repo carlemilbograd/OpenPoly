@@ -20,8 +20,8 @@ OpenPoly/
     ├── markets.py            # search and browse markets
     ├── orderbook.py          # live bids/asks and spread
     ├── arbitrage.py          # scan for mispriced YES+NO pairs
-    ├── arb_execute.py        # execute arbitrage trades with size calculation
-    ├── auto_arb.py           # automated arb bot (loop or single-shot)
+    ├── arbitrage_execute.py  # execute arbitrage trades with size calculation
+    ├── auto_arbitrage.py     # automated arbitrage bot (loop or single-shot)
     ├── scheduler.py          # automation daemon — run any script on any interval
     ├── auto_monitor.py       # automated market monitor (price moves, arb gaps, alerts)
     ├── research_agent.py     # structured research brief + Kelly sizing
@@ -71,9 +71,9 @@ Just talk to your OpenClaw agent naturally:
 | "Show my Polymarket portfolio" | `portfolio.py` |
 | "Search for crypto markets on Polymarket" | `markets.py --query crypto` |
 | "Find arbitrage opportunities on Polymarket" | `arbitrage.py` |
-| "Execute the best arbitrage opportunity with 100 USDC" | `arb_execute.py --scan --budget 100` |
-| "Run auto arb every 15 minutes at 0.5% threshold" | `scheduler.py add` + `scheduler.py start --background` |
-| "Start the arb bot risking 5% of balance" | `auto_arb.py --interval 15m --budget-pct 0.05` |
+| "Execute the best arbitrage opportunity with 100 USDC" | `arbitrage_execute.py --scan --budget 100` |
+| "Run auto arbitrage every 15 minutes at 0.5% threshold" | `scheduler.py add` + `scheduler.py start --background` |
+| "Start the auto arbitrage bot risking 5% of balance" | `auto_arbitrage.py --interval 15m --budget-pct 0.05` |
 | "Monitor markets and alert me on price moves" | `auto_monitor.py --loop --interval 1h` |
 | "Show recent market alerts" | `auto_monitor.py --alerts --since 24h` |
 | "Show the orderbook for [token-id]" | `orderbook.py --token-id ...` |
@@ -183,34 +183,34 @@ Deep stats combining Gamma API, Data API, and CLOB. Outputs price changes (1h/24
 python scripts/market_stats.py --market-id MARKET_ID_OR_SLUG
 ```
 
-### `arb_execute.py`
+### `arbitrage_execute.py`
 Scans for or targets a specific arbitrage opportunity, calculates position sizes, checks liquidity, and places all legs after confirmation.
 ```bash
-python scripts/arb_execute.py --scan --budget 100         # auto-find best opportunity
-python scripts/arb_execute.py --market-id ID --budget 50  # specific market
-python scripts/arb_execute.py --scan --min-gap 0.04       # custom gap threshold
+python scripts/arbitrage_execute.py --scan --budget 100         # auto-find best opportunity
+python scripts/arbitrage_execute.py --market-id ID --budget 50  # specific market
+python scripts/arbitrage_execute.py --scan --min-gap 0.04       # custom gap threshold
 ```
 
-### `auto_arb.py`
+### `auto_arbitrage.py`
 Automated arbitrage bot. Scans markets at a configurable interval, and executes when a gap exceeds the threshold — risking a percentage of available balance.
 ```bash
 # Run once (for use by scheduler.py)
-python scripts/auto_arb.py --once --min-gap 0.005 --budget-pct 0.05
+python scripts/auto_arbitrage.py --once --min-gap 0.005 --budget-pct 0.05
 
 # Self-contained loop
-python scripts/auto_arb.py --interval 15m --min-gap 0.005 --budget-pct 0.10
-python scripts/auto_arb.py --interval 1h  --min-gap 0.01  --budget-pct 0.05 --dry-run
-python scripts/auto_arb.py --interval 30s --min-gap 0.003 --max-budget 200
+python scripts/auto_arbitrage.py --interval 15m --min-gap 0.005 --budget-pct 0.10
+python scripts/auto_arbitrage.py --interval 1h  --min-gap 0.01  --budget-pct 0.05 --dry-run
+python scripts/auto_arbitrage.py --interval 30s --min-gap 0.003 --max-budget 200
 
 # Check bot history/stats
-python scripts/auto_arb.py --status
+python scripts/auto_arbitrage.py --status
 ```
 
 ### `scheduler.py`
 General-purpose automation daemon. Registers any script to run on any interval, then runs them in the background.
 ```bash
 # Register jobs
-python scripts/scheduler.py add --name auto_arb --script auto_arb.py \
+python scripts/scheduler.py add --name auto_arbitrage --script auto_arbitrage.py \
   --args "--min-gap 0.005 --budget-pct 0.05 --once" --interval 15m
 python scripts/scheduler.py add --name monitor --script auto_monitor.py \
   --args "--once" --interval 1h
@@ -224,9 +224,9 @@ python scripts/scheduler.py start --background   # start daemon (detached)
 python scripts/scheduler.py status               # daemon status + job list
 python scripts/scheduler.py stop                 # stop daemon
 python scripts/scheduler.py list                 # all jobs + next-run times
-python scripts/scheduler.py disable --name auto_arb
-python scripts/scheduler.py enable  --name auto_arb
-python scripts/scheduler.py remove  --name auto_arb
+python scripts/scheduler.py disable --name auto_arbitrage
+python scripts/scheduler.py enable  --name auto_arbitrage
+python scripts/scheduler.py remove  --name auto_arbitrage
 ```
 Job logs: `logs/job_<name>_YYYY-MM-DD.log`. Requires no extra dependencies.
 
@@ -274,13 +274,13 @@ python scripts/watchlist.py remove --token-id TOKEN_ID
 
 Run hands-off bots that execute in the background while you're away.
 
-### Quick setup — auto arb every 15 minutes
+### Quick setup — auto arbitrage every 15 minutes
 
 ```bash
-# 1. Register the arb bot job
+# 1. Register the auto arbitrage bot job
 python scripts/scheduler.py add \
-  --name auto_arb \
-  --script auto_arb.py \
+  --name auto_arbitrage \
+  --script auto_arbitrage.py \
   --args "--min-gap 0.005 --budget-pct 0.05 --once" \
   --interval 15m
 
@@ -303,8 +303,8 @@ python scripts/scheduler.py status
 ```bash
 python scripts/scheduler.py list                  # see all jobs + next-run times
 python scripts/scheduler.py stop                  # stop everything
-python scripts/scheduler.py disable --name auto_arb  # pause without removing
-python scripts/auto_arb.py --status              # arb bot stats (runs, profits)
+python scripts/scheduler.py disable --name auto_arbitrage  # pause without removing
+python scripts/auto_arbitrage.py --status                  # bot stats (runs, profits)
 python scripts/auto_monitor.py --alerts --since 24h  # recent market alerts
 ```
 
@@ -312,7 +312,7 @@ python scripts/auto_monitor.py --alerts --since 24h  # recent market alerts
 
 | Script | Description | Single-shot flag |
 |---|---|---|
-| `auto_arb.py` | Scan + execute arb at threshold | `--once` |
+| `auto_arbitrage.py` | Scan + execute arbitrage at threshold | `--once` |
 | `auto_monitor.py` | Scan for price moves, arb gaps, spikes | `--once` |
 | `exposure.py` | Portfolio risk check | *(runs and exits)* |
 | `watchlist.py check` | Fire watchlist price alerts | *(runs and exits)* |
