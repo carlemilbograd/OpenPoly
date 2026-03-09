@@ -26,11 +26,11 @@ import sys, os, json, time, argparse, signal as _signal, subprocess
 from pathlib import Path
 from datetime import datetime, timezone
 
-SKILL_DIR  = Path(__file__).parent.parent
 SCRIPTS_DIR = Path(__file__).parent
-LOG_DIR    = SKILL_DIR / "logs"
+sys.path.insert(0, str(SCRIPTS_DIR))
+from _utils import SKILL_DIR, LOG_DIR, load_json, save_json
+
 STATE_FILE = SKILL_DIR / "omni_state.json"
-LOG_DIR.mkdir(exist_ok=True)
 
 # Default budget allocation percentages
 DEFAULT_SPLIT = {
@@ -78,16 +78,11 @@ STRATEGY_CONFIGS = {
 
 # ── State ─────────────────────────────────────────────────────────────────────
 def load_state() -> dict:
-    if STATE_FILE.exists():
-        try:
-            return json.loads(STATE_FILE.read_text())
-        except Exception:
-            pass
-    return {"processes": {}, "started_at": None, "total_budget": 0}
+    return load_json(STATE_FILE, {"processes": {}, "started_at": None, "total_budget": 0})
 
 
 def save_state(state: dict):
-    STATE_FILE.write_text(json.dumps(state, indent=2))
+    save_json(STATE_FILE, state)
 
 
 # ── Budget splitting ───────────────────────────────────────────────────────────

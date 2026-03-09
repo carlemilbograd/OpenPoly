@@ -33,35 +33,13 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _client import GAMMA_API, get_client
+from _client import get_client
+from _utils import SKILL_DIR, FEE, get_mid, fetch_markets
 
-SKILL_DIR  = Path(__file__).parent.parent
 STATE_FILE = SKILL_DIR / "correlation_state.json"
-FEE        = 0.02   # ~2% round-trip
 
 # ── Keyword cluster groups ─────────────────────────────────────────────────────
 # Markets sharing 2+ clusters are candidates for correlation analysis.
-CLUSTERS = [
-    {"label": "trump",       "keywords": ["trump", "donald", "magа", "maga"]},
-    {"label": "republican",  "keywords": ["republican", "gop", "rnc", "red wave"]},
-    {"label": "democrat",    "keywords": ["democrat", "harris", "biden", "dnc"]},
-    {"label": "election",    "keywords": ["election", "wins", "elected", "vote", "ballot", "primary"]},
-    {"label": "popular_vote","keywords": ["popular vote", "popular-vote"]},
-    {"label": "bitcoin",     "keywords": ["bitcoin", "btc"]},
-    {"label": "ethereum",    "keywords": ["ethereum", "eth"]},
-    {"label": "fed",         "keywords": ["fed ", "federal reserve", "fomc", "interest rate", "rate hike", "rate cut"]},
-    {"label": "inflation",   "keywords": ["inflation", "cpi", "pce", "consumer price"]},
-    {"label": "recession",   "keywords": ["recession", "gdp", "contraction"]},
-    {"label": "war",         "keywords": ["war", "conflict", "invasion", "ceasefire", "military"]},
-    {"label": "ukraine",     "keywords": ["ukraine", "zelensky", "kyiv"]},
-    {"label": "russia",      "keywords": ["russia", "putin", "moscow", "kremlin"]},
-    {"label": "china",       "keywords": ["china", "xi jinping", "beijing", "prc", "taiwan"]},
-    {"label": "ai",          "keywords": ["artificial intelligence", " ai ", "openai", "gpt", "llm"]},
-    {"label": "stock_market",{"keywords": ["s&p", "s&p 500", "dow jones", "nasdaq", "stock market"]}}.get("keywords") or
-                              ["s&p", "s&p 500", "dow jones", "nasdaq", "stock market"],
-]
-
-# fix list comprehension above — flatten it
 CLUSTERS = [
     {"label": "trump",        "keywords": ["trump", "donald", "maga"]},
     {"label": "republican",   "keywords": ["republican", "gop", "rnc"]},
@@ -94,24 +72,7 @@ def get_clusters(question: str) -> set:
     return found
 
 
-def fetch_markets(limit: int, tag: str) -> list:
-    params = {"limit": limit, "active": "true", "order": "volume24hr", "ascending": "false"}
-    if tag:
-        params["tag"] = tag
-    try:
-        resp = requests.get(f"{GAMMA_API}/markets", params=params, timeout=20)
-        return resp.json() if resp.ok else []
-    except Exception:
-        return []
 
-
-def get_yes_price(client, token_id: str) -> float | None:
-    try:
-        r = client.get_midpoint(token_id)
-        v = r.get("mid")
-        return float(v) if v else None
-    except Exception:
-        return None
 
 
 def get_best_prices(client, token_id: str) -> tuple[float, float]:
@@ -206,8 +167,8 @@ def find_opportunities(edges: list, client, min_edge: float) -> list:
         yes_token_b = tokens_b[0].get("token_id", "")
         no_token_b  = tokens_b[1].get("token_id", "") if len(tokens_b) > 1 else ""
 
-        p_yes_a = get_yes_price(client, yes_token_a)
-        p_yes_b = get_yes_price(client, yes_token_b)
+        p_yes_a = get_mid(client, yes_token_a)
+        p_yes_b = get_mid(client, yes_token_b)
         if p_yes_a is None or p_yes_b is None:
             continue
 

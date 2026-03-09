@@ -32,14 +32,10 @@ from xml.etree import ElementTree as ET
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _client import GAMMA_API, get_client
+from _utils import SKILL_DIR, LOG_DIR, FEE, load_json, save_json, get_mid
 
-SKILL_DIR    = Path(__file__).parent.parent
-LOG_DIR      = SKILL_DIR / "logs"
 STATE_FILE   = SKILL_DIR / "news_trader_state.json"
 SOURCES_FILE = SKILL_DIR / "news_sources.json"
-LOG_DIR.mkdir(exist_ok=True)
-
-FEE      = 0.02   # round-trip fee estimate
 MAX_AGE  = 43200  # ignore stories older than 12 hours (seconds)
 
 # ── Default news source catalogue ─────────────────────────────────────────────
@@ -86,16 +82,11 @@ KEYWORD_SIGNALS = [
 
 # ── State ─────────────────────────────────────────────────────────────────────
 def load_state() -> dict:
-    if STATE_FILE.exists():
-        try:
-            return json.loads(STATE_FILE.read_text())
-        except Exception:
-            pass
-    return {"seen_ids": [], "trade_log": [], "last_run": None}
+    return load_json(STATE_FILE, {"seen_ids": [], "trade_log": [], "last_run": None})
 
 
 def save_state(state: dict):
-    STATE_FILE.write_text(json.dumps(state, indent=2))
+    save_json(STATE_FILE, state)
 
 
 def story_id(title: str, url: str) -> str:
@@ -313,16 +304,6 @@ def execute_trade(match: dict, instruction: dict, budget: float,
         result["status"] = "error"
         result["error"]  = str(e)
     return result
-
-
-# ── Get current mid price ─────────────────────────────────────────────────────
-def get_mid(client, token_id: str) -> float | None:
-    try:
-        r = client.get_midpoint(token_id)
-        v = r.get("mid")
-        return float(v) if v else None
-    except Exception:
-        return None
 
 
 # ── Main cycle ────────────────────────────────────────────────────────────────

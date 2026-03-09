@@ -25,9 +25,9 @@ from dataclasses import dataclass, asdict
 from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _client import GAMMA_API, get_client
+from _client import get_client
+from _utils import FEE
 
-FEE = 0.02          # ~2% round-trip Polymarket fee estimate
 MIN_LIQUIDITY = 5   # warn if best-level size < $5
 
 

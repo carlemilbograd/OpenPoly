@@ -34,14 +34,10 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _client import GAMMA_API, get_client
+from _utils import SKILL_DIR, LOG_DIR, FEE, load_json, save_json
 
-SKILL_DIR  = Path(__file__).parent.parent
-LOG_DIR    = SKILL_DIR / "logs"
 STATE_FILE = SKILL_DIR / "market_maker_state.json"
 LOG_FILE   = LOG_DIR / f"market_maker_{datetime.now().strftime('%Y-%m-%d')}.log"
-LOG_DIR.mkdir(exist_ok=True)
-
-FEE             = 0.02    # estimated round-trip fee
 MIN_MID         = 0.10    # don't make markets below 10¢ or above 90¢
 MAX_MID         = 0.90
 MIN_VOLUME_24H  = 1000    # minimum 24h volume for a market to be worth making
@@ -52,16 +48,11 @@ DEFAULT_INV_MAX = 50.0    # max $50 net YES exposure per market
 
 # ── State ─────────────────────────────────────────────────────────────────────
 def load_state() -> dict:
-    if STATE_FILE.exists():
-        try:
-            return json.loads(STATE_FILE.read_text())
-        except Exception:
-            pass
-    return {"inventory": {}, "order_log": [], "filled_log": [], "pnl": 0.0}
+    return load_json(STATE_FILE, {"inventory": {}, "order_log": [], "filled_log": [], "pnl": 0.0})
 
 
 def save_state(state: dict):
-    STATE_FILE.write_text(json.dumps(state, indent=2))
+    save_json(STATE_FILE, state)
 
 
 def log(msg: str):

@@ -41,14 +41,10 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _client import GAMMA_API, get_client
+from _utils import SKILL_DIR, LOG_DIR, FEE, load_json, save_json, get_mid, fetch_markets
 
-SKILL_DIR    = Path(__file__).parent.parent
-LOG_DIR      = SKILL_DIR / "logs"
 SIGNALS_FILE = SKILL_DIR / "ai_signals.json"
 LOG_FILE     = LOG_DIR / f"ai_automation_{datetime.now().strftime('%Y-%m-%d')}.log"
-LOG_DIR.mkdir(exist_ok=True)
-
-FEE = 0.02
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def log(msg: str):
@@ -63,38 +59,11 @@ def log(msg: str):
 
 
 def load_signals() -> list:
-    if SIGNALS_FILE.exists():
-        try:
-            return json.loads(SIGNALS_FILE.read_text())
-        except Exception:
-            pass
-    return []
+    return load_json(SIGNALS_FILE, [])
 
 
 def save_signals(signals: list):
-    SIGNALS_FILE.write_text(json.dumps(signals, indent=2))
-
-
-# ── Market fetching ───────────────────────────────────────────────────────────
-def fetch_top_markets(n: int) -> list:
-    try:
-        resp = requests.get(
-            f"{GAMMA_API}/markets",
-            params={"limit": n, "active": "true", "order": "volume24hr", "ascending": "false"},
-            timeout=20,
-        )
-        return resp.json() if resp.ok else []
-    except Exception:
-        return []
-
-
-def get_mid_price(client, token_id: str) -> float | None:
-    try:
-        r = client.get_midpoint(token_id)
-        v = r.get("mid")
-        return float(v) if v else None
-    except Exception:
-        return None
+    save_json(SIGNALS_FILE, signals)
 
 
 def get_market_stats(market_id: str) -> dict:
@@ -313,7 +282,7 @@ def execute_signal(signal: dict, budget: float, client, dry_run: bool):
 def run_cycle(args, client) -> list:
     n = args.research_top
     log(f"Fetching top {n} markets by volume...")
-    markets = fetch_top_markets(n)
+    markets = fetch_markets(n)
     if not markets:
         log("No markets returned.")
         return []
@@ -327,7 +296,7 @@ def run_cycle(args, client) -> list:
         if not yes_token:
             continue
 
-        current_price = get_mid_price(client, yes_token)
+        current_price = get_mid(client, yes_token)
         stats         = {}  # get_market_stats(m.get("id",""))  # optional extra call
         trades        = get_recent_trades(m.get("id", ""))
 
