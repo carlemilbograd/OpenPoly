@@ -48,9 +48,14 @@ def get_client(authenticated: bool = True) -> ClobClient:
     api_passphrase = os.getenv("POLYMARKET_API_PASSPHRASE")
 
     kwargs = dict(host=HOST, key=private_key, chain_id=CHAIN_ID)
+    # sig_type: 0=EOA/MetaMask, 1=POLY_PROXY (Magic/email), 2=GNOSIS_SAFE (most common for web signups)
     if funder:
         kwargs["funder"] = funder
         kwargs["signature_type"] = sig_type
+    elif sig_type in (1, 2):
+        print("WARNING: POLYMARKET_SIGNATURE_TYPE is set but POLYMARKET_FUNDER_ADDRESS is missing.")
+        print("Set POLYMARKET_FUNDER_ADDRESS to the wallet address shown on polymarket.com")
+        sys.exit(1)
 
     client = ClobClient(**kwargs)
 

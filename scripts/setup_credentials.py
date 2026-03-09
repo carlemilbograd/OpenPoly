@@ -37,8 +37,8 @@ def main():
         print(f"Add it to {dotenv_path} or export as environment variable.")
         print("\nFormat of .env file:")
         print("POLYMARKET_PRIVATE_KEY=0xYOUR_PRIVATE_KEY")
-        print("POLYMARKET_FUNDER_ADDRESS=0xYOUR_WALLET_ADDRESS  # for proxy/email wallets")
-        print("POLYMARKET_SIGNATURE_TYPE=0  # 0=MetaMask/EOA, 1=Magic/email wallet")
+        print("POLYMARKET_FUNDER_ADDRESS=0xYOUR_WALLET_ADDRESS  # required for types 1 and 2")
+        print("POLYMARKET_SIGNATURE_TYPE=0  # 0=MetaMask/EOA  1=POLY_PROXY(Magic/email)  2=GNOSIS_SAFE(most common)")
         sys.exit(1)
 
     kwargs = dict(host=HOST, key=private_key, chain_id=CHAIN_ID)

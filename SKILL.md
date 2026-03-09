@@ -4,7 +4,7 @@ description: >
   A full-featured Polymarket trading skill. Enables the agent to fetch account
   info, browse markets, analyse orderbooks, detect arbitrage, run LLM-powered
   research, and execute trades — all via natural language instructions.
-  Requires POLYMARKET_PRIVATE_KEY (and optionally POLYMARKET_FUNDER_ADDRESS)
+  Requires POLYMARKET_PRIVATE_KEY (and POLYMARKET_FUNDER_ADDRESS for signature types 1 and 2)
   set as environment variables or in ~/.openclaw/workspace/skills/polymarket/.env
 ---
 
@@ -34,8 +34,8 @@ Before using this skill, ensure credentials are available. Check in this order:
 Required variables:
 ```
 POLYMARKET_PRIVATE_KEY=0xYOUR_PRIVATE_KEY
-POLYMARKET_FUNDER_ADDRESS=0xYOUR_WALLET_ADDRESS   # required for email/proxy wallets
-POLYMARKET_SIGNATURE_TYPE=0                        # 0=EOA/MetaMask, 1=email/Magic wallet
+POLYMARKET_FUNDER_ADDRESS=0xYOUR_WALLET_ADDRESS   # required for signature types 1 and 2 (shown on polymarket.com)
+POLYMARKET_SIGNATURE_TYPE=0                        # 0=EOA/MetaMask  1=POLY_PROXY(Magic/email)  2=GNOSIS_SAFE(most common web signup)
 ```
 
 If credentials are missing, tell the user to add them and show the above format.

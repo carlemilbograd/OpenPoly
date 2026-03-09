@@ -143,13 +143,23 @@ python scripts/history.py --market-id TOKEN_ID
 The `.env` file (never committed) holds:
 
 ```
-POLYMARKET_PRIVATE_KEY=0xYOUR_PRIVATE_KEY     # required
-POLYMARKET_FUNDER_ADDRESS=                    # required for Magic/email wallets
-POLYMARKET_SIGNATURE_TYPE=0                   # 0 = MetaMask/EOA, 1 = Magic/email
+POLYMARKET_PRIVATE_KEY=0xYOUR_PRIVATE_KEY     # required — always a Polygon/Ethereum private key
+POLYMARKET_FUNDER_ADDRESS=                    # required for types 1 and 2 (address shown on polymarket.com)
+POLYMARKET_SIGNATURE_TYPE=0                   # 0=MetaMask/EOA  1=POLY_PROXY  2=GNOSIS_SAFE
 POLYMARKET_API_KEY=                           # auto-filled by setup_credentials.py
 POLYMARKET_API_SECRET=                        # auto-filled
 POLYMARKET_API_PASSPHRASE=                    # auto-filled
 ```
+
+**Which signature type am I?**
+
+| How you use Polymarket | Type | Funder address needed? |
+|---|---|---|
+| MetaMask or hardware wallet | `0` | No — same as your wallet |
+| Signed up with email / Google | `2` (GNOSIS_SAFE, most common) | Yes — shown on polymarket.com |
+| Old Magic Link account | `1` (POLY_PROXY) | Yes — shown on polymarket.com |
+
+For types `1` and `2`: export your private key from **polymarket.com → Settings → Export Key**.
 
 ---
 
