@@ -14,7 +14,7 @@ A full-featured **Polymarket trading skill for [OpenClaw](https://docs.openclaw.
 ## Repo structure
 
 ```
-openpolys/
+OpenPoly/
 ├── .env.example           # credential template — copy to .env
 ├── .gitignore
 ├── requirements.txt
@@ -39,8 +39,8 @@ openpolys/
 
 ```bash
 # 1. Clone and enter the repo
-git clone https://github.com/carlemilbograd/openpolys.git
-cd openpolys
+git clone https://github.com/carlemilbograd/OpenPoly.git
+cd OpenPoly
 
 # 2. Install Python dependencies
 pip install -r requirements.txt
