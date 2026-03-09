@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# poly — thin wrapper so `poly <cmd>` works from $PATH
+# Installed by: ln -sf ~/.openclaw/workspace/skills/polymarket/poly ~/.local/bin/poly
+
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec python3 "$SKILL_DIR/poly.py" "$@"

@@ -1,5 +1,6 @@
 ---
 name: polymarket_trader
+user-invocable: true
 description: >
   A full-featured Polymarket trading skill. Enables the agent to fetch account
   info, browse markets, analyse orderbooks, detect arbitrage, run LLM-powered
@@ -46,16 +47,27 @@ If credentials are missing, tell the user to add them and show the above format.
 
 ---
 
-## How to Invoke Scripts
+## How to Invoke Skills
 
-All scripts live in the same directory as this SKILL.md. Run them with:
+All capabilities are available through the `poly` CLI, installed at `~/.local/bin/poly`.
 
-```bash
-cd ~/.openclaw/workspace/skills/polymarket
-python scripts/<script_name>.py [args]
+**In OpenClaw (slash command — calls the skill directly):**
+```
+/polymarket_trader <command> [args...]
 ```
 
-Always `pip install py-clob-client requests python-dotenv web3 --quiet --break-system-packages` before running if packages are not available.
+**From any terminal or shell block:**
+```bash
+poly <command> [args...]
+```
+
+**See all commands:**
+```bash
+poly help
+```
+
+> **First-time setup:** `pip install py-clob-client requests python-dotenv web3 --quiet --break-system-packages`
+> If `poly` is not found: `ln -sf ~/.openclaw/workspace/skills/polymarket/poly ~/.local/bin/poly`
 
 ---
 
@@ -66,7 +78,7 @@ Always `pip install py-clob-client requests python-dotenv web3 --quiet --break-s
 When the user asks "what's my portfolio", "show my positions", "what do I have open", etc.:
 
 ```bash
-python scripts/portfolio.py
+poly portfolio
 ```
 
 Output: USDC balance, open positions (market name, side, size, current value, P&L), total portfolio value.
@@ -78,7 +90,7 @@ Output: USDC balance, open positions (market name, side, size, current value, P&
 When the user asks to find markets, browse topics, or list active markets:
 
 ```bash
-python scripts/markets.py --query "YOUR SEARCH TERM" --limit 10
+poly markets --query "YOUR SEARCH TERM" --limit 10
 # omit --query to list top markets by volume
 ```
 
@@ -91,7 +103,7 @@ Output: Table with market question, current YES price, NO price, 24h volume, clo
 When the user wants to see the orderbook or current price for a specific market:
 
 ```bash
-python scripts/orderbook.py --token-id TOKEN_ID --depth 5
+poly orderbook --token-id TOKEN_ID --depth 5
 ```
 
 Output: Top bids and asks with price/size, mid price, spread.
@@ -103,7 +115,7 @@ Output: Top bids and asks with price/size, mid price, spread.
 When the user says "find arbitrage", "scan for mispriced markets", "where can I make risk-free profit":
 
 ```bash
-python scripts/arbitrage.py --min-gap 0.03 --limit 50
+poly arb --min-gap 0.03 --limit 50
 ```
 
 Logic: For binary YES/NO markets, YES price + NO price should equal ~1.00 minus fees. Any gap > `--min-gap` (default 3%) is flagged. For multi-outcome markets, the sum of all outcome prices should equal 1.00.
@@ -117,7 +129,7 @@ Output: Sorted list of arbitrage opportunities with expected profit % and sugges
 When the user says "research this market", "what do you think about X", "analyse and suggest a trade":
 
 ```bash
-python scripts/research_agent.py --market-id MARKET_ID_OR_SLUG
+poly research --market-id MARKET_ID_OR_SLUG
 ```
 
 The script will:
@@ -141,12 +153,12 @@ When the user explicitly confirms they want to trade:
 
 **Limit order:**
 ```bash
-python scripts/trade.py --token-id TOKEN_ID --side BUY --price 0.55 --size 10 --type GTC
+poly trade --token-id TOKEN_ID --side BUY --price 0.55 --size 10 --type GTC
 ```
 
 **Market order:**
 ```bash
-python scripts/trade.py --token-id TOKEN_ID --side BUY --size 25 --type FOK
+poly trade --token-id TOKEN_ID --side BUY --size 25 --type FOK
 ```
 
 - `--side`: BUY or SELL
@@ -161,11 +173,11 @@ python scripts/trade.py --token-id TOKEN_ID --side BUY --size 25 --type FOK
 ### 7. Cancel Orders
 
 ```bash
-python scripts/cancel.py --order-id ORDER_ID
+poly cancel --order-id ORDER_ID
 # or cancel all open orders:
-python scripts/cancel.py --all
+poly cancel --all
 # or cancel all orders for a market:
-python scripts/cancel.py --market-id MARKET_ID
+poly cancel --market-id MARKET_ID
 ```
 
 ---
@@ -173,7 +185,7 @@ python scripts/cancel.py --market-id MARKET_ID
 ### 8. Trade History
 
 ```bash
-python scripts/history.py --limit 20
+poly history --limit 20
 ```
 
 ---
@@ -183,10 +195,10 @@ python scripts/history.py --limit 20
 When the user asks "show my open orders", "what orders do I have pending", "list unfilled orders":
 
 ```bash
-python scripts/open_orders.py
-python scripts/open_orders.py --market-id TOKEN_ID   # filter by market
-python scripts/open_orders.py --side BUY             # filter by side
-python scripts/open_orders.py --json                 # machine-readable output
+poly open-orders
+poly open-orders --market-id TOKEN_ID   # filter by market
+poly open-orders --side BUY             # filter by side
+poly open-orders --json                 # machine-readable output
 ```
 
 Output: Table of open orders with age, fill %, price, size, and total exposure sum.
@@ -198,10 +210,10 @@ Output: Table of open orders with age, fill %, price, size, and total exposure s
 When the user asks about price trend, historical price, how price has moved, price chart:
 
 ```bash
-python scripts/price_history.py --token-id TOKEN_ID
-python scripts/price_history.py --token-id TOKEN_ID --interval 1h   # 1m 5m 15m 1h 6h 1d 1w max
-python scripts/price_history.py --token-id TOKEN_ID --start 2024-01-01 --end 2024-02-01
-python scripts/price_history.py --token-id TOKEN_ID --raw           # print all data points
+poly price --token-id TOKEN_ID
+poly price --token-id TOKEN_ID --interval 1h   # 1m 5m 15m 1h 6h 1d 1w max
+poly price --token-id TOKEN_ID --start 2024-01-01 --end 2024-02-01
+poly price --token-id TOKEN_ID --raw           # print all data points
 ```
 
 Output: ASCII sparkline chart, price statistics (change %, range, volatility), recent price points.
@@ -213,9 +225,9 @@ Output: ASCII sparkline chart, price statistics (change %, range, volatility), r
 When the user asks to "redeem", "collect winnings", "claim resolved positions", "cash out resolved markets":
 
 ```bash
-python scripts/redeem.py                            # scan all resolved positions and redeem
-python scripts/redeem.py --market-id CONDITION_ID   # single market
-python scripts/redeem.py --dry-run                  # preview without transacting
+poly redeem                            # scan all resolved positions and redeem
+poly redeem --market-id CONDITION_ID   # single market
+poly redeem --dry-run                  # preview without transacting
 ```
 
 ⚠️ This sends an on-chain transaction on Polygon. **Always show dry-run output first and confirm with the user.** Requires `web3` package. Uses `POLYGON_RPC_URL` env var (defaults to `https://polygon-rpc.com`).
@@ -227,7 +239,7 @@ python scripts/redeem.py --dry-run                  # preview without transactin
 When the user asks for deep analysis, full stats, volume data, liquidity data, or holder info on a specific market:
 
 ```bash
-python scripts/market_stats.py --market-id MARKET_ID_OR_SLUG
+poly stats --market-id MARKET_ID_OR_SLUG
 ```
 
 Output: Price changes (1h/24h/7d), orderbook depth per outcome, open interest, top holders, recent trades, full Gamma metadata.
@@ -239,9 +251,9 @@ Output: Price changes (1h/24h/7d), orderbook depth per outcome, open interest, t
 When the user wants to execute arbitrage (not just find it), "take the arb", "execute the arb trade":
 
 ```bash
-python scripts/arbitrage_execute.py --scan --budget 100         # auto-find best opportunity and ask to execute
-python scripts/arbitrage_execute.py --market-id ID --budget 50  # specific market
-python scripts/arbitrage_execute.py --min-gap 0.04              # minimum gap threshold
+poly arb-exec --scan --budget 100         # auto-find best opportunity and ask to execute
+poly arb-exec --market-id ID --budget 50  # specific market
+poly arb-exec --min-gap 0.04              # minimum gap threshold
 ```
 
 Math: `shares = budget / (p_yes + p_no)`, `profit = shares − budget`.
@@ -255,8 +267,8 @@ Before executing, shows: gap %, expected profit, cost per leg, liquidity depth c
 When the user asks about risk, "how exposed am I", "portfolio concentration", "what's my max loss", "how much is at risk":
 
 ```bash
-python scripts/exposure.py
-python scripts/exposure.py --warn-threshold 0.30   # flag positions > 30% of portfolio
+poly exposure
+poly exposure --warn-threshold 0.30   # flag positions > 30% of portfolio
 ```
 
 Output: Concentration % per position, correlated positions grouped by tag, max loss / max gain, cash ratio, bar chart visualization.
@@ -268,11 +280,11 @@ Output: Concentration % per position, correlated positions grouped by tag, max l
 When the user wants to monitor a market, "watch this market", "alert me when price hits X", "set a price alert":
 
 ```bash
-python scripts/watchlist.py add --token-id TOKEN_ID [--above 0.70] [--below 0.30]
-python scripts/watchlist.py list                          # show all watched markets
-python scripts/watchlist.py check                         # check all alerts once
-python scripts/watchlist.py check --loop --interval 60   # poll every 60 seconds
-python scripts/watchlist.py remove --token-id TOKEN_ID
+poly watch add --token-id TOKEN_ID [--above 0.70] [--below 0.30]
+poly watch list                          # show all watched markets
+poly watch check                         # check all alerts once
+poly watch check --loop --interval 60   # poll every 60 seconds
+poly watch remove --token-id TOKEN_ID
 ```
 
 Alerts are stored in `watchlist.json` in the skill root. When an alert fires, the script outputs the suggested trade command.
@@ -285,19 +297,19 @@ When the user says "run auto arbitrage", "start arbitrage bot", "scan and execut
 
 **One-shot (run now, then stop):**
 ```bash
-python scripts/auto_arbitrage.py --once --min-gap 0.005 --budget-pct 0.05
+poly auto-arb --once --min-gap 0.005 --budget-pct 0.05
 ```
 
 **Self-contained loop (keeps running):**
 ```bash
-python scripts/auto_arbitrage.py --interval 15m --min-gap 0.005 --budget-pct 0.10
-python scripts/auto_arbitrage.py --interval 1h  --min-gap 0.01  --budget-pct 0.05 --dry-run
-python scripts/auto_arbitrage.py --interval 30s --min-gap 0.003 --budget-pct 0.20 --max-budget 200
+poly auto-arb --interval 15m --min-gap 0.005 --budget-pct 0.10
+poly auto-arb --interval 1h  --min-gap 0.01  --budget-pct 0.05 --dry-run
+poly auto-arb --interval 30s --min-gap 0.003 --budget-pct 0.20 --max-budget 200
 ```
 
 **Check status/history:**
 ```bash
-python scripts/auto_arbitrage.py --status
+poly auto-arb --status
 ```
 
 Parameters:
@@ -321,28 +333,28 @@ When the user wants to automate ANY script on a recurring schedule — "run X ev
 **Register jobs:**
 ```bash
 # Auto arbitrage bot every 15 minutes at 0.5% gap, risking 5% of balance
-python scripts/scheduler.py add \
+poly schedule add \
   --name auto_arbitrage \
   --script auto_arbitrage.py \
   --args "--min-gap 0.005 --budget-pct 0.05 --once" \
   --interval 15m
 
 # Market monitor every hour
-python scripts/scheduler.py add \
+poly schedule add \
   --name monitor \
   --script auto_monitor.py \
   --args "--once" \
   --interval 1h
 
 # Exposure check every 6 hours
-python scripts/scheduler.py add \
+poly schedule add \
   --name exposure \
   --script exposure.py \
   --args "" \
   --interval 6h
 
 # Watchlist alerts every 5 minutes
-python scripts/scheduler.py add \
+poly schedule add \
   --name watchlist \
   --script watchlist.py \
   --args "check" \
@@ -351,18 +363,18 @@ python scripts/scheduler.py add \
 
 **Start the scheduler:**
 ```bash
-python scripts/scheduler.py start --background    # detach, run forever
-python scripts/scheduler.py start                 # foreground (blocking)
+poly schedule start --background    # detach, run forever
+poly schedule start                 # foreground (blocking)
 ```
 
 **Manage:**
 ```bash
-python scripts/scheduler.py list                  # all jobs + next run times
-python scripts/scheduler.py status               # daemon status + job list
-python scripts/scheduler.py stop                 # stop background daemon
-python scripts/scheduler.py disable --name auto_arbitrage
-python scripts/scheduler.py enable  --name auto_arbitrage
-python scripts/scheduler.py remove  --name auto_arbitrage
+poly schedule list                  # all jobs + next run times
+poly schedule status               # daemon status + job list
+poly schedule stop                 # stop background daemon
+poly schedule disable --name auto_arbitrage
+poly schedule enable  --name auto_arbitrage
+poly schedule remove  --name auto_arbitrage
 ```
 
 Job logs are written to `logs/job_<name>_YYYY-MM-DD.log`. Scheduler log at `logs/scheduler_YYYY-MM-DD.log`.
@@ -380,21 +392,21 @@ When the user asks to "monitor markets", "alert me on price moves", "watch for o
 
 **One-shot scan:**
 ```bash
-python scripts/auto_monitor.py --once
-python scripts/auto_monitor.py --once --price-move 0.08 --min-arb-gap 0.02
+poly monitor --once
+poly monitor --once --price-move 0.08 --min-arb-gap 0.02
 ```
 
 **Continuous loop:**
 ```bash
-python scripts/auto_monitor.py --loop --interval 1h
-python scripts/auto_monitor.py --loop --interval 30m --limit 200
+poly monitor --loop --interval 1h
+poly monitor --loop --interval 30m --limit 200
 ```
 
 **Read alert history:**
 ```bash
-python scripts/auto_monitor.py --alerts              # last 20 alerts
-python scripts/auto_monitor.py --alerts --since 6h   # last 6 hours
-python scripts/auto_monitor.py --alerts --since 24h  # last day
+poly monitor --alerts              # last 20 alerts
+poly monitor --alerts --since 6h   # last 6 hours
+poly monitor --alerts --since 24h  # last day
 ```
 
 Alert types fired:
@@ -447,12 +459,12 @@ Alert log: `logs/monitor_alerts.json`
 ### Auto Arbitrage Quick Start
 When a user says "set up auto arbitrage at X% threshold, risking Y% every Z minutes":
 ```bash
-python scripts/scheduler.py add --name auto_arbitrage --script auto_arbitrage.py \
+poly schedule add --name auto_arbitrage --script auto_arbitrage.py \
   --args "--min-gap X --budget-pct Y --once --dry-run" --interval Zm
 # Have user review dry-run output first, then:
-python scripts/scheduler.py add --name auto_arbitrage --script auto_arbitrage.py \
+poly schedule add --name auto_arbitrage --script auto_arbitrage.py \
   --args "--min-gap X --budget-pct Y --once" --interval Zm
-python scripts/scheduler.py start --background
+poly schedule start --background
 ```
 
 ---
@@ -473,10 +485,10 @@ after fees. Also finds the optimal order size for a given edge.
 
 **Commands**:
 ```bash
-python scripts/execution_simulator.py --token-id TOKEN --size 50 --edge 0.07
-python scripts/execution_simulator.py --token-id TOKEN --size 100 --edge 0.05 --side SELL
-python scripts/execution_simulator.py --token-id TOKEN --optimal-size --edge 0.06 --budget 200
-python scripts/execution_simulator.py --token-id TOKEN --size 50 --edge 0.07 --json
+poly simulate --token-id TOKEN --size 50 --edge 0.07
+poly simulate --token-id TOKEN --size 100 --edge 0.05 --side SELL
+poly simulate --token-id TOKEN --optimal-size --edge 0.06 --budget 200
+poly simulate --token-id TOKEN --size 50 --edge 0.07 --json
 ```
 
 **Output**: Slippage %, average fill price, fill breakdown by price level, decision: TRADE or SKIP.
@@ -496,12 +508,12 @@ If YES(A) + NO(B) < 1.0, buying both guarantees profit (assuming A and B are tru
 
 **Commands**:
 ```bash
-python scripts/correlation_arbitrage.py --scan                    # scan all detected pairs
-python scripts/correlation_arbitrage.py --scan --min-edge 0.03    # 3%+ net edge only
-python scripts/correlation_arbitrage.py --scan --tag politics      # filter by tag
-python scripts/correlation_arbitrage.py --scan --execute --budget 100  # execute best gap
-python scripts/correlation_arbitrage.py --graph                   # print full correlation graph
-python scripts/correlation_arbitrage.py --once                    # single-shot for scheduler
+poly corr-arb --scan                    # scan all detected pairs
+poly corr-arb --scan --min-edge 0.03    # 3%+ net edge only
+poly corr-arb --scan --tag politics      # filter by tag
+poly corr-arb --scan --execute --budget 100  # execute best gap
+poly corr-arb --graph                   # print full correlation graph
+poly corr-arb --once                    # single-shot for scheduler
 ```
 
 **Arguments**:
@@ -539,13 +551,13 @@ orderbook slippage.
 
 **Commands**:
 ```bash
-python scripts/news_trader.py --once                          # single pipeline cycle
-python scripts/news_trader.py --loop --interval 5             # poll every 5 minutes
-python scripts/news_trader.py --loop --interval 5 --dry-run   # simulate only
-python scripts/news_trader.py --sources                        # list active RSS feeds
-python scripts/news_trader.py --add-source "URL" --source-label "Name" --source-trust 0.8
-python scripts/news_trader.py --history --limit 20            # show recent trades
-python scripts/news_trader.py --history --json                # JSON output
+poly news --once                          # single pipeline cycle
+poly news --loop --interval 5             # poll every 5 minutes
+poly news --loop --interval 5 --dry-run   # simulate only
+poly news --sources                        # list active RSS feeds
+poly news --add-source "URL" --source-label "Name" --source-trust 0.8
+poly news --history --limit 20            # show recent trades
+poly news --history --json                # JSON output
 ```
 
 **Key arguments**:
@@ -578,13 +590,13 @@ quote sizes when net position becomes skewed to avoid directional risk.
 
 **Commands**:
 ```bash
-python scripts/market_maker.py --scan-targets                  # find best markets to make
-python scripts/market_maker.py --market-id TOKEN               # make a specific token (auto-params)
-python scripts/market_maker.py --market-id TOKEN --spread 0.02 --size 10 --max-inventory 50
-python scripts/market_maker.py --once                          # single quote refresh
-python scripts/market_maker.py --loop --interval 30            # refresh every 30s
-python scripts/market_maker.py --status                        # inventory + active orders
-python scripts/market_maker.py --close --market-id TOKEN       # cancel all quotes
+poly mm --scan-targets                  # find best markets to make
+poly mm --market-id TOKEN               # make a specific token (auto-params)
+poly mm --market-id TOKEN --spread 0.02 --size 10 --max-inventory 50
+poly mm --once                          # single quote refresh
+poly mm --loop --interval 30            # refresh every 30s
+poly mm --status                        # inventory + active orders
+poly mm --close --market-id TOKEN       # cancel all quotes
 ```
 
 **Arguments**:
@@ -612,11 +624,11 @@ a plug-in slot for real LLM analysis in an OpenClaw context). Saves signals to
 
 **Commands**:
 ```bash
-python scripts/ai_automation.py --once                          # research top 20 markets
-python scripts/ai_automation.py --research-top 50 --once        # scan top 50
-python scripts/ai_automation.py --signals                        # print current signals
-python scripts/ai_automation.py --once --execute --min-confidence 0.7  # execute top signals
-python scripts/ai_automation.py --loop --interval 30            # refresh every 30 min
+poly signals --once                          # research top 20 markets
+poly signals --research-top 50 --once        # scan top 50
+poly signals --signals                        # print current signals
+poly signals --once --execute --min-confidence 0.7  # execute top signals
+poly signals --loop --interval 30            # refresh every 30 min
 ```
 
 **Arguments**:
@@ -641,14 +653,14 @@ and aggregates P&L from all strategy state files.
 
 **Commands**:
 ```bash
-python scripts/omni_strategy.py --start --budget 1000          # start all, $1000 total
-python scripts/omni_strategy.py --start --budget 1000 --dry-run
-python scripts/omni_strategy.py --start --split "arb:30,corr:25,mm:25,news:10,ai:10"
-python scripts/omni_strategy.py --start --only "arb,mm"        # subset of strategies
-python scripts/omni_strategy.py --once                         # one cycle of all, then exit
-python scripts/omni_strategy.py --status                        # running processes + PIDs
-python scripts/omni_strategy.py --pnl                           # combined P&L report
-python scripts/omni_strategy.py --stop                          # terminate all
+poly omni --start --budget 1000          # start all, $1000 total
+poly omni --start --budget 1000 --dry-run
+poly omni --start --split "arb:30,corr:25,mm:25,news:10,ai:10"
+poly omni --start --only "arb,mm"        # subset of strategies
+poly omni --once                         # one cycle of all, then exit
+poly omni --status                        # running processes + PIDs
+poly omni --pnl                           # combined P&L report
+poly omni --stop                          # terminate all
 ```
 
 **Budget aliases for --split**: `arb` = auto_arbitrage, `corr` = correlation_arbitrage,
@@ -661,8 +673,8 @@ python scripts/omni_strategy.py --stop                          # terminate all
 
 ## Error Handling
 
-- If scripts fail with `ModuleNotFoundError`: run `pip install py-clob-client requests python-dotenv web3 --break-system-packages`
-- If `401 Unauthorized`: credentials are wrong or expired — re-derive with `python scripts/setup_credentials.py`
+- If commands fail with `ModuleNotFoundError`: run `pip install py-clob-client requests python-dotenv web3 --break-system-packages`
+- If `401 Unauthorized`: credentials are wrong or expired — re-derive with `poly setup`
 - If `insufficient balance`: user needs to deposit USDC to their Polygon wallet
 - Always show the raw error to the user if a trade fails
 
