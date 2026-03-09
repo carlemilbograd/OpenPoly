@@ -34,6 +34,11 @@ Thumbs.db
 
 # User data files (generated at runtime)
 watchlist.json
+schedule.json
+auto_arb_state.json
+monitor_state.json
+scheduler.pid
+logs/
 
 # Pytest
 .pytest_cache/

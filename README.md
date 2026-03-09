@@ -21,6 +21,9 @@ OpenPoly/
     ├── orderbook.py          # live bids/asks and spread
     ├── arbitrage.py          # scan for mispriced YES+NO pairs
     ├── arb_execute.py        # execute arbitrage trades with size calculation
+    ├── auto_arb.py           # automated arb bot (loop or single-shot)
+    ├── scheduler.py          # automation daemon — run any script on any interval
+    ├── auto_monitor.py       # automated market monitor (price moves, arb gaps, alerts)
     ├── research_agent.py     # structured research brief + Kelly sizing
     ├── trade.py              # place limit or market orders
     ├── cancel.py             # cancel one, all, or per-market orders
@@ -69,6 +72,10 @@ Just talk to your OpenClaw agent naturally:
 | "Search for crypto markets on Polymarket" | `markets.py --query crypto` |
 | "Find arbitrage opportunities on Polymarket" | `arbitrage.py` |
 | "Execute the best arbitrage opportunity with 100 USDC" | `arb_execute.py --scan --budget 100` |
+| "Run auto arb every 15 minutes at 0.5% threshold" | `scheduler.py add` + `scheduler.py start --background` |
+| "Start the arb bot risking 5% of balance" | `auto_arb.py --interval 15m --budget-pct 0.05` |
+| "Monitor markets and alert me on price moves" | `auto_monitor.py --loop --interval 1h` |
+| "Show recent market alerts" | `auto_monitor.py --alerts --since 24h` |
 | "Show the orderbook for [token-id]" | `orderbook.py --token-id ...` |
 | "Show price history for [token-id]" | `price_history.py --token-id ...` |
 | "Show deep stats for this market" | `market_stats.py --market-id ...` |
@@ -80,6 +87,8 @@ Just talk to your OpenClaw agent naturally:
 | "Redeem my winnings from resolved markets" | `redeem.py --dry-run` then confirm |
 | "How exposed is my portfolio?" | `exposure.py` |
 | "Alert me when [market] goes above 0.70" | `watchlist.py add --token-id ... --above 0.70` |
+| "What automation tasks are scheduled?" | `scheduler.py status` |
+| "Stop the automation daemon" | `scheduler.py stop` |
 
 The agent reads `SKILL.md` to know exactly when and how to call each script.
 
@@ -182,6 +191,56 @@ python scripts/arb_execute.py --market-id ID --budget 50  # specific market
 python scripts/arb_execute.py --scan --min-gap 0.04       # custom gap threshold
 ```
 
+### `auto_arb.py`
+Automated arbitrage bot. Scans markets at a configurable interval, and executes when a gap exceeds the threshold — risking a percentage of available balance.
+```bash
+# Run once (for use by scheduler.py)
+python scripts/auto_arb.py --once --min-gap 0.005 --budget-pct 0.05
+
+# Self-contained loop
+python scripts/auto_arb.py --interval 15m --min-gap 0.005 --budget-pct 0.10
+python scripts/auto_arb.py --interval 1h  --min-gap 0.01  --budget-pct 0.05 --dry-run
+python scripts/auto_arb.py --interval 30s --min-gap 0.003 --max-budget 200
+
+# Check bot history/stats
+python scripts/auto_arb.py --status
+```
+
+### `scheduler.py`
+General-purpose automation daemon. Registers any script to run on any interval, then runs them in the background.
+```bash
+# Register jobs
+python scripts/scheduler.py add --name auto_arb --script auto_arb.py \
+  --args "--min-gap 0.005 --budget-pct 0.05 --once" --interval 15m
+python scripts/scheduler.py add --name monitor --script auto_monitor.py \
+  --args "--once" --interval 1h
+python scripts/scheduler.py add --name exposure --script exposure.py \
+  --args "" --interval 6h
+python scripts/scheduler.py add --name watchlist --script watchlist.py \
+  --args "check" --interval 5m
+
+# Control
+python scripts/scheduler.py start --background   # start daemon (detached)
+python scripts/scheduler.py status               # daemon status + job list
+python scripts/scheduler.py stop                 # stop daemon
+python scripts/scheduler.py list                 # all jobs + next-run times
+python scripts/scheduler.py disable --name auto_arb
+python scripts/scheduler.py enable  --name auto_arb
+python scripts/scheduler.py remove  --name auto_arb
+```
+Job logs: `logs/job_<name>_YYYY-MM-DD.log`. Requires no extra dependencies.
+
+### `auto_monitor.py`
+Automated market monitor. Fires alerts for: price moves ≥5pp, arb gaps ≥3%, volume spikes, near-50/50 markets, and extreme prices.
+```bash
+python scripts/auto_monitor.py --once                       # one scan, print new alerts
+python scripts/auto_monitor.py --loop --interval 1h         # continuous monitoring
+python scripts/auto_monitor.py --alerts                     # last 20 alerts
+python scripts/auto_monitor.py --alerts --since 24h         # past 24 hours
+python scripts/auto_monitor.py --once --price-move 0.08     # 8pp move threshold
+```
+Alert log: `logs/monitor_alerts.json`.
+
 ### `exposure.py`
 Portfolio risk analysis: concentration per position, correlated positions grouped by tag, max loss/gain scenarios, cash ratio warning.
 ```bash
@@ -208,6 +267,56 @@ python scripts/watchlist.py check                                    # check all
 python scripts/watchlist.py check --loop --interval 60              # poll every 60 seconds
 python scripts/watchlist.py remove --token-id TOKEN_ID
 ```
+
+---
+
+## Automation
+
+Run hands-off bots that execute in the background while you're away.
+
+### Quick setup — auto arb every 15 minutes
+
+```bash
+# 1. Register the arb bot job
+python scripts/scheduler.py add \
+  --name auto_arb \
+  --script auto_arb.py \
+  --args "--min-gap 0.005 --budget-pct 0.05 --once" \
+  --interval 15m
+
+# 2. (Optional) also monitor for opportunities
+python scripts/scheduler.py add \
+  --name monitor \
+  --script auto_monitor.py \
+  --args "--once" \
+  --interval 1h
+
+# 3. Start the scheduler daemon
+python scripts/scheduler.py start --background
+
+# 4. Check it's running
+python scripts/scheduler.py status
+```
+
+### Managing automation
+
+```bash
+python scripts/scheduler.py list                  # see all jobs + next-run times
+python scripts/scheduler.py stop                  # stop everything
+python scripts/scheduler.py disable --name auto_arb  # pause without removing
+python scripts/auto_arb.py --status              # arb bot stats (runs, profits)
+python scripts/auto_monitor.py --alerts --since 24h  # recent market alerts
+```
+
+### Available automated scripts
+
+| Script | Description | Single-shot flag |
+|---|---|---|
+| `auto_arb.py` | Scan + execute arb at threshold | `--once` |
+| `auto_monitor.py` | Scan for price moves, arb gaps, spikes | `--once` |
+| `exposure.py` | Portfolio risk check | *(runs and exits)* |
+| `watchlist.py check` | Fire watchlist price alerts | *(runs and exits)* |
+| `portfolio.py` | Balance + positions snapshot | *(runs and exits)* |
 
 ---
 
