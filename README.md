@@ -20,10 +20,17 @@ OpenPoly/
     ├── markets.py            # search and browse markets
     ├── orderbook.py          # live bids/asks and spread
     ├── arbitrage.py          # scan for mispriced YES+NO pairs
+    ├── arb_execute.py        # execute arbitrage trades with size calculation
     ├── research_agent.py     # structured research brief + Kelly sizing
     ├── trade.py              # place limit or market orders
     ├── cancel.py             # cancel one, all, or per-market orders
-    └── history.py            # trade history
+    ├── open_orders.py        # list pending orders with age/fill/exposure
+    ├── history.py            # trade history
+    ├── price_history.py      # price chart over time with ASCII sparkline
+    ├── market_stats.py       # deep stats combining Gamma + Data + CLOB APIs
+    ├── exposure.py           # portfolio risk and concentration analysis
+    ├── redeem.py             # on-chain redemption of resolved positions
+    └── watchlist.py          # persistent price alerts with polling
 ```
 
 ---
@@ -61,11 +68,18 @@ Just talk to your OpenClaw agent naturally:
 | "Show my Polymarket portfolio" | `portfolio.py` |
 | "Search for crypto markets on Polymarket" | `markets.py --query crypto` |
 | "Find arbitrage opportunities on Polymarket" | `arbitrage.py` |
+| "Execute the best arbitrage opportunity with 100 USDC" | `arb_execute.py --scan --budget 100` |
 | "Show the orderbook for [token-id]" | `orderbook.py --token-id ...` |
+| "Show price history for [token-id]" | `price_history.py --token-id ...` |
+| "Show deep stats for this market" | `market_stats.py --market-id ...` |
 | "Research the market about X and suggest a trade" | `research_agent.py` |
 | "Buy 20 USDC of YES on [market] at 0.45" | `trade.py` (asks for confirmation) |
+| "What orders do I have open?" | `open_orders.py` |
 | "Cancel all my open Polymarket orders" | `cancel.py --all` |
 | "Show my last 20 trades" | `history.py --limit 20` |
+| "Redeem my winnings from resolved markets" | `redeem.py --dry-run` then confirm |
+| "How exposed is my portfolio?" | `exposure.py` |
+| "Alert me when [market] goes above 0.70" | `watchlist.py add --token-id ... --above 0.70` |
 
 The agent reads `SKILL.md` to know exactly when and how to call each script.
 
@@ -136,6 +150,65 @@ python scripts/history.py --limit 20
 python scripts/history.py --market-id TOKEN_ID
 ```
 
+### `open_orders.py`
+Lists all open/unfilled orders with age, fill percentage, and total exposure.
+```bash
+python scripts/open_orders.py                         # all open orders
+python scripts/open_orders.py --market-id TOKEN_ID    # filter by market
+python scripts/open_orders.py --side BUY              # filter by side
+python scripts/open_orders.py --json                  # machine-readable JSON
+```
+
+### `price_history.py`
+Fetches price over time and renders an ASCII sparkline chart with statistics.
+```bash
+python scripts/price_history.py --token-id TOKEN_ID
+python scripts/price_history.py --token-id TOKEN_ID --interval 1h   # 1m 5m 15m 1h 6h 1d 1w max
+python scripts/price_history.py --token-id TOKEN_ID --start 2024-01-01 --end 2024-02-01
+python scripts/price_history.py --token-id TOKEN_ID --raw            # all data points
+```
+
+### `market_stats.py`
+Deep stats combining Gamma API, Data API, and CLOB. Outputs price changes (1h/24h/7d), orderbook depth, open interest, top holders, and recent trades.
+```bash
+python scripts/market_stats.py --market-id MARKET_ID_OR_SLUG
+```
+
+### `arb_execute.py`
+Scans for or targets a specific arbitrage opportunity, calculates position sizes, checks liquidity, and places all legs after confirmation.
+```bash
+python scripts/arb_execute.py --scan --budget 100         # auto-find best opportunity
+python scripts/arb_execute.py --market-id ID --budget 50  # specific market
+python scripts/arb_execute.py --scan --min-gap 0.04       # custom gap threshold
+```
+
+### `exposure.py`
+Portfolio risk analysis: concentration per position, correlated positions grouped by tag, max loss/gain scenarios, cash ratio warning.
+```bash
+python scripts/exposure.py
+python scripts/exposure.py --warn-threshold 0.30          # flag positions > 30% of portfolio
+```
+
+### `redeem.py`
+On-chain redemption of resolved winning positions. Calls `redeemPositions()` on the Polymarket CTF contract on Polygon.
+```bash
+python scripts/redeem.py --dry-run                        # preview without transacting (always run first)
+python scripts/redeem.py                                  # redeem all eligible positions
+python scripts/redeem.py --market-id CONDITION_ID         # single market
+```
+Requires `web3` package (`pip install web3`). Optional env var `POLYGON_RPC_URL` (defaults to `https://polygon-rpc.com`).
+
+### `watchlist.py`
+Persistent price monitoring with above/below threshold alerts. Stores state in `watchlist.json`.
+```bash
+python scripts/watchlist.py add --token-id TOKEN_ID --above 0.70   # alert above 70¢
+python scripts/watchlist.py add --token-id TOKEN_ID --below 0.30   # alert below 30¢
+python scripts/watchlist.py list                                     # show watchlist
+python scripts/watchlist.py check                                    # check all alerts once
+python scripts/watchlist.py check --loop --interval 60              # poll every 60 seconds
+python scripts/watchlist.py remove --token-id TOKEN_ID
+```
+
 ---
 
 ## Credentials
@@ -177,3 +250,4 @@ For types `1` and `2`: export your private key from **polymarket.com → Setting
 - Python 3.11+
 - A Polymarket account funded with USDC on Polygon
 - A wallet private key (MetaMask EOA or Magic/email proxy wallet)
+- `web3` package required only for `redeem.py` (included in `requirements.txt`)

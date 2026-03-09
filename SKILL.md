@@ -15,12 +15,14 @@ description: >
 This skill gives the agent full access to a Polymarket account and the public
 Polymarket APIs. It can:
 
-1. **Account & Portfolio** — view balance, open positions, trade history
-2. **Market Discovery** — search and list active prediction markets
-3. **Orderbook & Pricing** — read live bids/asks, spreads, price history
-4. **Arbitrage Detection** — scan multi-outcome markets for pricing gaps
+1. **Account & Portfolio** — view balance, open positions, trade history, risk exposure
+2. **Market Discovery** — search and list active prediction markets, deep market stats
+3. **Orderbook & Pricing** — read live bids/asks, spreads, full price history with chart
+4. **Arbitrage Detection & Execution** — scan and execute multi-outcome pricing gaps
 5. **LLM Research Agent** — web-search a market topic, form a probability estimate, compare to market price, and suggest a trade
-6. **Order Execution** — place limit or market orders, cancel orders
+6. **Order Execution** — place limit or market orders, cancel orders, view open orders
+7. **Redemption** — claim USDC from resolved winning positions on-chain
+8. **Watchlist & Alerts** — monitor markets and trigger price alerts
 
 ---
 
@@ -51,7 +53,7 @@ cd ~/.openclaw/workspace/skills/polymarket
 python scripts/<script_name>.py [args]
 ```
 
-Always `pip install py-clob-client requests python-dotenv --quiet --break-system-packages` before running if the package is not available.
+Always `pip install py-clob-client requests python-dotenv web3 --quiet --break-system-packages` before running if packages are not available.
 
 ---
 
@@ -174,6 +176,107 @@ python scripts/history.py --limit 20
 
 ---
 
+### 9. Open Orders
+
+When the user asks "show my open orders", "what orders do I have pending", "list unfilled orders":
+
+```bash
+python scripts/open_orders.py
+python scripts/open_orders.py --market-id TOKEN_ID   # filter by market
+python scripts/open_orders.py --side BUY             # filter by side
+python scripts/open_orders.py --json                 # machine-readable output
+```
+
+Output: Table of open orders with age, fill %, price, size, and total exposure sum.
+
+---
+
+### 10. Price History
+
+When the user asks about price trend, historical price, how price has moved, price chart:
+
+```bash
+python scripts/price_history.py --token-id TOKEN_ID
+python scripts/price_history.py --token-id TOKEN_ID --interval 1h   # 1m 5m 15m 1h 6h 1d 1w max
+python scripts/price_history.py --token-id TOKEN_ID --start 2024-01-01 --end 2024-02-01
+python scripts/price_history.py --token-id TOKEN_ID --raw           # print all data points
+```
+
+Output: ASCII sparkline chart, price statistics (change %, range, volatility), recent price points.
+
+---
+
+### 11. Redeem Winnings
+
+When the user asks to "redeem", "collect winnings", "claim resolved positions", "cash out resolved markets":
+
+```bash
+python scripts/redeem.py                            # scan all resolved positions and redeem
+python scripts/redeem.py --market-id CONDITION_ID   # single market
+python scripts/redeem.py --dry-run                  # preview without transacting
+```
+
+⚠️ This sends an on-chain transaction on Polygon. **Always show dry-run output first and confirm with the user.** Requires `web3` package. Uses `POLYGON_RPC_URL` env var (defaults to `https://polygon-rpc.com`).
+
+---
+
+### 12. Market Stats
+
+When the user asks for deep analysis, full stats, volume data, liquidity data, or holder info on a specific market:
+
+```bash
+python scripts/market_stats.py --market-id MARKET_ID_OR_SLUG
+```
+
+Output: Price changes (1h/24h/7d), orderbook depth per outcome, open interest, top holders, recent trades, full Gamma metadata.
+
+---
+
+### 13. Execute Arbitrage
+
+When the user wants to execute arbitrage (not just find it), "take the arb", "execute the arb trade":
+
+```bash
+python scripts/arb_execute.py --scan --budget 100         # auto-find best opportunity and ask to execute
+python scripts/arb_execute.py --market-id ID --budget 50  # specific market
+python scripts/arb_execute.py --min-gap 0.04              # minimum gap threshold
+```
+
+Math: `shares = budget / (p_yes + p_no)`, `profit = shares − budget`.
+
+Before executing, shows: gap %, expected profit, cost per leg, liquidity depth check. Requires user confirmation.
+
+---
+
+### 14. Portfolio Risk / Exposure
+
+When the user asks about risk, "how exposed am I", "portfolio concentration", "what's my max loss", "how much is at risk":
+
+```bash
+python scripts/exposure.py
+python scripts/exposure.py --warn-threshold 0.30   # flag positions > 30% of portfolio
+```
+
+Output: Concentration % per position, correlated positions grouped by tag, max loss / max gain, cash ratio, bar chart visualization.
+
+---
+
+### 15. Watchlist & Price Alerts
+
+When the user wants to monitor a market, "watch this market", "alert me when price hits X", "set a price alert":
+
+```bash
+python scripts/watchlist.py add --token-id TOKEN_ID [--above 0.70] [--below 0.30]
+python scripts/watchlist.py list                          # show all watched markets
+python scripts/watchlist.py check                         # check all alerts once
+python scripts/watchlist.py check --loop --interval 60   # poll every 60 seconds
+python scripts/watchlist.py remove --token-id TOKEN_ID
+```
+
+Alerts are stored in `watchlist.json` in the skill root. When an alert fires, the script outputs the suggested trade command.
+
+---
+
 ## Strategy Patterns
 
 ### Arbitrage Strategy
@@ -198,7 +301,7 @@ python scripts/history.py --limit 20
 
 ## Error Handling
 
-- If scripts fail with `ModuleNotFoundError`: run `pip install py-clob-client requests python-dotenv --break-system-packages`
+- If scripts fail with `ModuleNotFoundError`: run `pip install py-clob-client requests python-dotenv web3 --break-system-packages`
 - If `401 Unauthorized`: credentials are wrong or expired — re-derive with `python scripts/setup_credentials.py`
 - If `insufficient balance`: user needs to deposit USDC to their Polygon wallet
 - Always show the raw error to the user if a trade fails

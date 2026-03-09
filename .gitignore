@@ -32,6 +32,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# User data files (generated at runtime)
+watchlist.json
+
 # Pytest
 .pytest_cache/
 .coverage
