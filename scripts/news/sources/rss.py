@@ -15,6 +15,7 @@ Add custom feeds via the caller or news_sources.json.
 """
 import hashlib
 import logging
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -28,6 +29,7 @@ log = logging.getLogger(__name__)
 
 _TIMEOUT = 15
 _ATOM = "http://www.w3.org/2005/Atom"
+_TAG_RE = re.compile(r"<[^>]+>")   # strip HTML tags without parsing XML
 
 # ---------------------------------------------------------------------------
 # Default high-value RSS feeds for Polymarket signal hunting
@@ -54,6 +56,19 @@ DEFAULT_FEEDS: list[dict] = [
     {"url": "https://decrypt.co/feed", "label": "Decrypt", "trust": 0.68},
     {"url": "https://theblock.co/rss.xml", "label": "The Block", "trust": 0.70},
 ]
+
+
+def _strip_html(text: str) -> str:
+    """Remove HTML tags robustly — never raises, works on malformed markup."""
+    # Unescape common entities first so the plain text is readable
+    text = text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+    text = text.replace("&nbsp;", " ").replace("&quot;", '"').replace("&#39;", "'")
+    # Strip numeric entities
+    text = re.sub(r"&#?\w+;", " ", text)
+    # Strip tags
+    text = _TAG_RE.sub(" ", text)
+    # Collapse whitespace
+    return " ".join(text.split())
 
 
 def _parse_date(s: str | None) -> float:
@@ -92,15 +107,22 @@ def fetch_feed(url: str, label: str, trust: float = 0.6) -> list[dict]:
     try:
         resp = requests.get(url, timeout=_TIMEOUT, headers={"User-Agent": "OpenPoly/1.0"})
         resp.raise_for_status()
-        xml_text = resp.text
     except Exception as exc:
         log.debug("RSS fetch failed [%s]: %s", label, exc)
         return []
 
-    try:
-        root = ET.fromstring(xml_text)
-    except ET.ParseError as exc:
-        log.debug("RSS parse error [%s]: %s", label, exc)
+    # Parse XML — prefer bytes so ElementTree can read the encoding declaration
+    # itself; fall back to text if bytes fails (e.g. BOM / garbled encoding).
+    xml_bytes = resp.content
+    root = None
+    for payload in (xml_bytes, resp.text):
+        try:
+            root = ET.fromstring(payload if isinstance(payload, bytes)
+                                 else payload.encode("utf-8", errors="replace"))
+            break
+        except ET.ParseError as exc:
+            log.warning("RSS parse error [%s]: %s", label, exc)
+    if root is None:
         return []
 
     stories: list[dict] = []
@@ -138,8 +160,8 @@ def fetch_feed(url: str, label: str, trust: float = 0.6) -> list[dict]:
         desc = _text(item, "description", "summary")
         if not title or not link:
             continue
-        # Strip HTML from description
-        desc = ET.tostring(ET.fromstring(f"<x>{desc}</x>"), encoding="unicode", method="text") if "<" in desc else desc
+        # Strip HTML from description safely — never parse user-supplied HTML as XML
+        desc = _strip_html(desc) if desc else ""
         stories.append({
             "id": "",
             "title": title,
