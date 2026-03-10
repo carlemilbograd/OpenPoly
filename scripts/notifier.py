@@ -127,7 +127,7 @@ def _telegram(text: str):
         "parse_mode":               "HTML",
         "disable_web_page_preview": True,
     }).encode()
-    url  = f"https://api.telegram.org/bot{token}/sendMessage"
+    url   = f"https://api.telegram.org/bot{token}/sendMessage"
     proxy = os.getenv("POLYMARKET_PROXY", "").strip() or None
     try:
         if proxy:
@@ -139,10 +139,19 @@ def _telegram(text: str):
             url, data=payload,
             headers={"Content-Type": "application/json"},
         )
-        with opener.open(req, timeout=10):
-            pass
-    except Exception:
-        pass  # never crash a trading bot over a notification
+        with opener.open(req, timeout=10) as resp:
+            raw = resp.read()
+            result = json.loads(raw)
+            if not result.get("ok"):
+                print(
+                    f"[telegram] API error: {result.get('description', raw)}",
+                    file=sys.stderr, flush=True,
+                )
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")
+        print(f"[telegram] HTTP {e.code}: {body}", file=sys.stderr, flush=True)
+    except Exception as e:
+        print(f"[telegram] send failed: {e}", file=sys.stderr, flush=True)
 
 
 def _print(line: str):
