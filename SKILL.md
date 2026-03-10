@@ -61,6 +61,9 @@ POLYMARKET_PROXY=               # proxy URL to bypass geo-blocking (http://, htt
                                 #   ssh -D 1080 -N user@unrestricted-server
                                 #   POLYMARKET_PROXY=socks5h://127.0.0.1:1080
                                 # Routes ALL traffic: CLOB orders, Gamma API, Data API, geoblock check
+TELEGRAM_BOT_TOKEN=             # Telegram bot token from @BotFather — enables Telegram push notifications
+TELEGRAM_CHAT_ID=               # your Telegram chat or group ID (find via /getUpdates after messaging the bot)
+                                # Verify: poly notify --test-telegram
 ```
 
 If credentials are missing, tell the user to add them and show the above format.
@@ -955,6 +958,7 @@ Full list: https://docs.polymarket.com/api-reference/geoblock
 **Purpose**: Central notification hub called by every auto bot when it opens or closes a trade.
 Fires a macOS Notification Center banner, appends a structured record to `logs/trade_notifications.json`,
 and prints a `🔔` summary line to stdout / log files.
+Optionally forwards every event to **Telegram** if `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set in `.env`.
 All hooks are wrapped in `try/except` — a notification failure will never crash a live bot.
 
 **Bots that push notifications**:
@@ -980,7 +984,16 @@ poly notify --bot auto_arbitrage   # filter by bot
 poly notify --event trade_opened   # filter by event type
 poly notify --json                 # raw JSON output
 poly notify --clear                # wipe history
+poly notify --test-telegram        # send test message to verify Telegram credentials
 ```
+
+**Telegram setup** (optional):
+1. Message `@BotFather` on Telegram → `/newbot` → copy the token
+2. Message your new bot once, then visit `https://api.telegram.org/bot<TOKEN>/getUpdates` — copy the `id` from `result[0].message.chat.id`
+3. Add to `.env`: `TELEGRAM_BOT_TOKEN=...` and `TELEGRAM_CHAT_ID=...`
+4. Verify with `poly notify --test-telegram`
+
+Works with personal chats and group chats. Works through `POLYMARKET_PROXY` if set.
 
 **Aliases**: `poly notifs` · `poly notifications` · `poly trades`
 

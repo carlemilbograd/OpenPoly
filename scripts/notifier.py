@@ -47,6 +47,13 @@ import json, os, subprocess, sys, uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+# Load .env so env vars are available when notifier is run standalone
+try:
+    from dotenv import load_dotenv as _load_dotenv
+    _load_dotenv(Path(__file__).parent.parent / ".env")
+except ImportError:
+    pass
+
 # ── Paths ──────────────────────────────────────────────────────────────────────
 SKILL_DIR      = Path(__file__).parent.parent
 LOG_DIR        = SKILL_DIR / "logs"
@@ -94,6 +101,46 @@ def _desktop(title: str, subtitle: str, body: str):
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+    except Exception:
+        pass  # never crash a trading bot over a notification
+
+
+def _telegram(text: str):
+    """
+    Send a message via Telegram Bot API.
+
+    Requires TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env (or env).
+    Silently skips if either var is missing.  Never raises — a failed
+    Telegram push must never crash a live trading bot.
+
+    Respects POLYMARKET_PROXY if set.
+    """
+    token   = os.getenv("TELEGRAM_BOT_TOKEN",  "").strip()
+    chat_id = os.getenv("TELEGRAM_CHAT_ID",    "").strip()
+    if not token or not chat_id:
+        return
+
+    import urllib.request, urllib.error
+    payload = json.dumps({
+        "chat_id":                  chat_id,
+        "text":                     text,
+        "parse_mode":               "HTML",
+        "disable_web_page_preview": True,
+    }).encode()
+    url  = f"https://api.telegram.org/bot{token}/sendMessage"
+    proxy = os.getenv("POLYMARKET_PROXY", "").strip() or None
+    try:
+        if proxy:
+            handler = urllib.request.ProxyHandler({"http": proxy, "https": proxy})
+            opener  = urllib.request.build_opener(handler)
+        else:
+            opener  = urllib.request.build_opener()
+        req = urllib.request.Request(
+            url, data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with opener.open(req, timeout=10):
+            pass
     except Exception:
         pass  # never crash a trading bot over a notification
 
@@ -165,6 +212,15 @@ def notify_trade_opened(
         body=market[:80],
     )
 
+    # Telegram
+    price_tg  = f" @ <code>{price:.4f}</code>" if price is not None else ""
+    ids_tg    = f"\n<code>{', '.join(o[:16] for o in order_ids[:3])}</code>" if order_ids else ""
+    _telegram(
+        f"🟢 <b>OPENED {direction}</b> — {bot}\n"
+        f"${amount_usd:.2f}{price_tg}\n"
+        f"{market[:120]}{ids_tg}"
+    )
+
 
 def notify_event(
     source: str,
@@ -198,6 +254,12 @@ def notify_event(
         title=f"OpenPoly — {title}",
         subtitle=source,
         body=body[:80],
+    )
+
+    # Telegram
+    tg_icon = {"info": "ℹ️", "warning": "⚠️", "error": "🚨"}.get(level, "ℹ️")
+    _telegram(
+        f"{tg_icon} <b>[{source}]</b> {title}\n{body[:180]}"
     )
 
 
@@ -240,6 +302,15 @@ def notify_trade_closed(
         body=market[:80],
     )
 
+    # Telegram
+    pnl_tg = f"  P&L ≈<b>${pnl_est:+.4f}</b>" if pnl_est is not None else ""
+    ids_tg = f"\n<code>{', '.join(o[:16] for o in order_ids[:3])}</code>" if order_ids else ""
+    _telegram(
+        f"🔴 <b>CLOSED {direction}</b> — {bot}\n"
+        f"${amount_usd:.2f}{pnl_tg}\n"
+        f"{market[:120]}{ids_tg}"
+    )
+
 
 # ── CLI reader ─────────────────────────────────────────────────────────────────
 
@@ -264,9 +335,35 @@ def _main():
     p.add_argument("--since",  default="",              help="Only show notifications within this window (e.g. 2h, 30m, 1d)")
     p.add_argument("--bot",    default="",              help="Filter by bot name")
     p.add_argument("--event",  default="",              help="Filter: trade_opened | trade_closed")
-    p.add_argument("--clear",  action="store_true",     help="Delete all saved notifications")
-    p.add_argument("--json",   action="store_true",     help="Print raw JSON")
+    p.add_argument("--clear",         action="store_true", help="Delete all saved notifications")
+    p.add_argument("--json",          action="store_true", help="Print raw JSON")
+    p.add_argument("--test-telegram", action="store_true", help="Send a test message via Telegram and exit")
     args = p.parse_args()
+
+    if args.test_telegram:
+        token   = os.getenv("TELEGRAM_BOT_TOKEN",  "").strip()
+        chat_id = os.getenv("TELEGRAM_CHAT_ID",    "").strip()
+        if not token or not chat_id:
+            print(
+                "  ✗  TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set.\n"
+                "     Add them to .env then re-run.\n"
+                "\n"
+                "  Setup:\n"
+                "    1. Message @BotFather on Telegram → /newbot → copy token\n"
+                "    2. Message your bot once, then visit:\n"
+                "         https://api.telegram.org/bot<TOKEN>/getUpdates\n"
+                "       Copy the \"id\" value from result[0].message.chat.id\n"
+                "    3. Add to .env:\n"
+                "         TELEGRAM_BOT_TOKEN=123456:ABC-yourtoken\n"
+                "         TELEGRAM_CHAT_ID=123456789\n"
+            )
+            sys.exit(1)
+        _telegram(
+            "✅ <b>OpenPoly Telegram connected</b>\n"
+            "Trade notifications will now appear here."
+        )
+        print("  ✓  Test message sent — check your Telegram chat.\n")
+        return
 
     if args.clear:
         _save([])

@@ -234,12 +234,25 @@ poly notify --bot auto_arbitrage   # filter by bot
 poly notify --event trade_opened   # filter: trade_opened | trade_closed
 poly notify --json                 # raw JSON
 poly notify --clear                # wipe history
+poly notify --test-telegram        # verify Telegram credentials + send test message
 ```
 
 All auto bots (`auto_arbitrage`, `news_trader`, `ai_automation`, `market_maker`,
 `correlation_arbitrage`) call `notify_trade_opened` / `notify_trade_closed` after
 every real order. Each event fires a macOS Notification Center banner and appends
 a structured record to `logs/trade_notifications.json`.
+
+Optionally, every notification (trade open, close, heartbeat, crash) is also
+forwarded to a **Telegram chat** — set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
+in `.env` to enable. Verify the connection with:
+
+```bash
+poly notify --test-telegram
+```
+
+> **Setup**: message `@BotFather` → `/newbot` → copy the token. Then message your
+> bot once and visit `https://api.telegram.org/bot<TOKEN>/getUpdates` to find your
+> `chat_id`. Works with personal chats and group chats alike.
 
 Notification hooks are `try/except`-wrapped — they never crash a live bot.
 
@@ -933,6 +946,8 @@ POLYMARKET_API_SECRET=                 # auto-filled
 POLYMARKET_API_PASSPHRASE=             # auto-filled
 NEWSAPI_KEY=                           # optional — newsapi.org free tier
 POLYMARKET_PROXY=                      # optional — proxy for geo-blocked regions (see below)
+TELEGRAM_BOT_TOKEN=                    # optional — push all trade alerts to Telegram
+TELEGRAM_CHAT_ID=                      # required with BOT_TOKEN — your chat / group ID
 ```
 
 **Which signature type?**
