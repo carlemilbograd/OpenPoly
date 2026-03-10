@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pytest pytest-cov requests python-dotenv py_clob_client
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short --cov=scripts --cov-report=term-missing
+
+      - name: Check for syntax errors in scripts
+        run: python -m py_compile scripts/*.py scripts/**/*.py

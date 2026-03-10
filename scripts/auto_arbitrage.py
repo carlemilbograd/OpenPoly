@@ -405,6 +405,12 @@ def main():
         return
 
     # ── Connect ───────────────────────────────────────────────────────────────
+    # Kill switch check — abort if risk_guard says stop
+    from risk_guard import is_killed
+    if is_killed():
+        print("⛔  Kill switch is active. Run: poly risk reset")
+        sys.exit(0)
+
     mode = "DRY RUN" if args.dry_run else "LIVE"
     logger.info(
         f"Starting auto_arbitrage  [{mode}]  interval={args.interval}  "

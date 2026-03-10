@@ -30,6 +30,19 @@ DATA_API = "https://data-api.polymarket.com"
 CHAIN_ID = 137
 
 
+def _mask_key(text: str, key: str) -> str:
+    """Replace any occurrence of key in text with a safe placeholder."""
+    if not key or len(key) < 8:
+        return text
+    return text.replace(key, key[:6] + "****" + key[-4:])
+
+
+_PLACEHOLDER_KEYS = {
+    "", "YOUR_KEY", "0xYOUR_KEY", "your_private_key_here",
+    "your-private-key", "CHANGE_ME", "xxxx",
+}
+
+
 def get_client(authenticated: bool = True) -> ClobClient:
     """Return a ClobClient. authenticated=False gives read-only access."""
     if not authenticated:
@@ -38,6 +51,15 @@ def get_client(authenticated: bool = True) -> ClobClient:
     private_key = os.getenv("POLYMARKET_PRIVATE_KEY")
     if not private_key:
         print("ERROR: POLYMARKET_PRIVATE_KEY not set.")
+        print("Run: python scripts/setup_credentials.py")
+        sys.exit(1)
+
+    # Entropy check — catch obvious placeholders before they reach the network
+    pk_stripped = private_key.strip().lower().lstrip("0x")
+    if (private_key.strip() in _PLACEHOLDER_KEYS
+            or len(set(pk_stripped)) < 5          # all same chars
+            or len(pk_stripped) < 32):             # too short to be a real key
+        print("ERROR: POLYMARKET_PRIVATE_KEY looks like a placeholder or is invalid.")
         print("Run: python scripts/setup_credentials.py")
         sys.exit(1)
 
@@ -57,7 +79,12 @@ def get_client(authenticated: bool = True) -> ClobClient:
         print("Set POLYMARKET_FUNDER_ADDRESS to the wallet address shown on polymarket.com")
         sys.exit(1)
 
-    client = ClobClient(**kwargs)
+    try:
+        client = ClobClient(**kwargs)
+    except Exception as e:
+        safe_msg = _mask_key(str(e), private_key)
+        print(f"ERROR initialising Polymarket client: {safe_msg}")
+        sys.exit(1)
 
     if api_key and api_secret and api_passphrase:
         creds = ApiCreds(
@@ -68,6 +95,11 @@ def get_client(authenticated: bool = True) -> ClobClient:
         client.set_api_creds(creds)
     else:
         # Derive fresh credentials
-        client.set_api_creds(client.create_or_derive_api_creds())
+        try:
+            client.set_api_creds(client.create_or_derive_api_creds())
+        except Exception as e:
+            safe_msg = _mask_key(str(e), private_key)
+            print(f"ERROR deriving API credentials: {safe_msg}")
+            sys.exit(1)
 
     return client

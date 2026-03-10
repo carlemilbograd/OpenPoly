@@ -352,6 +352,14 @@ def main():
         return
 
     authenticated = args.execute and not args.dry_run
+
+    # Kill switch check — abort if risk_guard says stop (skip for read-only modes)
+    if args.execute:
+        from risk_guard import is_killed
+        if is_killed():
+            print("⛔  Kill switch is active. Run: poly risk reset")
+            sys.exit(0)
+
     client = get_client(authenticated=authenticated)
 
     if args.once or args.loop:

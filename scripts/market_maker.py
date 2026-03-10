@@ -44,6 +44,8 @@ MIN_VOLUME_24H  = 1000    # minimum 24h volume for a market to be worth making
 DEFAULT_SPREAD  = 0.02    # 2% spread default
 DEFAULT_SIZE    = 10.0    # $10 per side default
 DEFAULT_INV_MAX = 50.0    # max $50 net YES exposure per market
+TICK_TOLERANCE  = 0.005   # price delta within which we preserve queue position (0.5¢)
+PARTIAL_FILL_THRESHOLD = 0.50  # if >50% filled, count as a fill event and don't repost
 
 
 # ── State ─────────────────────────────────────────────────────────────────────
@@ -148,10 +150,37 @@ def scan_target_markets(limit: int) -> list:
 
 
 # ── Order placement ────────────────────────────────────────────────────────────
+def _get_order_fill(client, order_id: str) -> dict:
+    """Fetch fill/size info for a live order from the CLOB.
+
+    Returns:
+        size_matched: USD value already filled
+        size_open:    USD value still resting
+        fill_pct:     fraction filled (0.0–1.0)
+        status:       raw status string from CLOB
+    """
+    try:
+        o = client.get_order(order_id)
+        matched = float(getattr(o, "size_matched", 0) or 0)
+        size_open = float(getattr(o, "size_open", 0) or getattr(o, "original_size", 0) or 0)
+        total = matched + size_open
+        return {
+            "size_matched": matched,
+            "size_open":    size_open,
+            "fill_pct":     matched / total if total > 0 else 0.0,
+            "status":       str(getattr(o, "status", "unknown")),
+        }
+    except Exception:
+        return {"size_matched": 0.0, "size_open": 0.0, "fill_pct": 0.0, "status": "unknown"}
+
+
 def cancel_existing_quotes(client, token_id: str, state: dict):
-    """Cancel any outstanding market-maker orders for this token."""
+    """Cancel any outstanding market-maker orders for this token (unconditional)."""
     inv = state["inventory"].get(token_id, {})
-    orders_to_cancel = inv.get("active_order_ids", [])
+    orders_to_cancel = [o["id"] for o in inv.get("active_orders", [])]
+    # Legacy: also check old flat list format
+    orders_to_cancel += [o for o in inv.get("active_order_ids", [])
+                         if isinstance(o, str)]
     if not orders_to_cancel:
         return
     for oid in orders_to_cancel:
@@ -159,7 +188,76 @@ def cancel_existing_quotes(client, token_id: str, state: dict):
             client.cancel(order_id=oid)
         except Exception:
             pass
+    inv["active_orders"]    = []
     inv["active_order_ids"] = []
+
+
+def _evaluate_existing_quotes(
+    client,
+    token_id: str,
+    state: dict,
+    ob: dict,
+    target_bid: float,
+    target_ask: float,
+) -> tuple[bool, list[str]]:
+    """Decide whether existing orders are still competitive or need reposting.
+
+    Returns:
+        (should_skip_requote, filled_sides)
+          should_skip_requote: True  → our quotes are still good, no action needed
+          filled_sides:        list of sides ('BUY'/'SELL') that partially filled
+                               and should NOT be reposted until inventory is updated
+    """
+    inv = state["inventory"].get(token_id, {})
+    active = inv.get("active_orders", [])
+    if not active:
+        return False, []
+
+    best_bid = ob["best_bid"]
+    best_ask = ob["best_ask"]
+    filled_sides: list[str] = []
+    all_still_competitive = True
+
+    for order in active:
+        oid   = order["id"]
+        side  = order.get("side", "")
+        price = order.get("price", 0.0)
+
+        # ── Queue-position check ─────────────────────────────────────────────
+        # Is our price still within TICK_TOLERANCE of the best on this side?
+        if side == "BUY":
+            at_top = abs(price - best_bid) <= TICK_TOLERANCE
+            # Also check our target hasn't drifted more than a tick from the order
+            target_close = abs(price - target_bid) <= TICK_TOLERANCE
+        else:
+            at_top = abs(price - best_ask) <= TICK_TOLERANCE
+            target_close = abs(price - target_ask) <= TICK_TOLERANCE
+
+        if not (at_top and target_close):
+            all_still_competitive = False
+
+        # ── Partial-fill check ───────────────────────────────────────────────
+        fill = _get_order_fill(client, oid)
+        if fill["fill_pct"] >= PARTIAL_FILL_THRESHOLD:
+            size_filled = fill["size_matched"]
+            log(f"Partial fill detected: {side} {oid[:14]} "
+                f"filled {fill['fill_pct']:.0%} (${size_filled:.2f})")
+            filled_sides.append(side)
+            # Update inventory for the fill
+            if side == "BUY":
+                inv["net_yes"]   = inv.get("net_yes", 0.0) + size_filled
+                inv["fills"]     = inv.get("fills", 0) + 1
+                inv["pnl_est"]   = inv.get("pnl_est", 0.0) - size_filled * price
+            else:
+                inv["net_yes"]   = inv.get("net_yes", 0.0) - size_filled
+                inv["fills"]     = inv.get("fills", 0) + 1
+                inv["pnl_est"]   = inv.get("pnl_est", 0.0) + size_filled * price
+
+    skip_requote = all_still_competitive and not filled_sides
+    if skip_requote:
+        log(f"Quotes still competitive (bid={best_bid:.4f}/ask={best_ask:.4f}) — "
+            f"preserving queue position on {token_id[:16]}")
+    return skip_requote, filled_sides
 
 
 def place_quote(client, token_id: str, side: str, price: float, size_usd: float,
@@ -188,18 +286,18 @@ def place_quote(client, token_id: str, side: str, price: float, size_usd: float,
 
 def refresh_quotes(client, token_id: str, market_q: str, spread: float,
                    size: float, max_inventory: float, state: dict, dry_run: bool):
-    """Cancel and re-post quotes for a single token."""
+    """Cancel stale quotes and re-post, preserving queue position when possible."""
     inv = state["inventory"].setdefault(token_id, {
         "token_id":        token_id,
         "question":        market_q,
         "net_yes":         0.0,
-        "active_order_ids": [],
+        "active_orders":   [],
+        "active_order_ids": [],   # legacy compat
         "fills":           0,
         "pnl_est":         0.0,
     })
 
-    cancel_existing_quotes(client, token_id, state)
-
+    # Refresh live orderbook first — needed for queue-position check
     ob = get_orderbook_summary(client, token_id)
     if not ob:
         log(f"No orderbook data for {token_id[:16]}")
@@ -217,6 +315,23 @@ def refresh_quotes(client, token_id: str, market_q: str, spread: float,
     our_ask     = round(mid + half_spread, 4)
     our_bid     = max(0.01, our_bid)
     our_ask     = min(0.99, our_ask)
+
+    # ── Queue-position + partial-fill check ───────────────────────────────────
+    # Only skip when NOT in dry-run (dry-run always refreshes for testing)
+    if not dry_run:
+        skip, filled_sides = _evaluate_existing_quotes(
+            client, token_id, state, ob, our_bid, our_ask
+        )
+        if skip:
+            return  # Our quotes are still best — nothing to do
+        # Cancel only if we need to update prices
+        cancel_existing_quotes(client, token_id, state)
+        # Don't repost sides that just partially filled (let inventory settle)
+        skip_bid = "BUY"  in filled_sides
+        skip_ask = "SELL" in filled_sides
+    else:
+        cancel_existing_quotes(client, token_id, state)
+        skip_bid = skip_ask = False
 
     # Adjust size based on inventory skew
     bid_size = size
@@ -240,19 +355,22 @@ def refresh_quotes(client, token_id: str, market_q: str, spread: float,
         f"bid={our_bid:.4f} (${bid_size:.2f})  ask={our_ask:.4f} (${ask_size:.2f})"
         + ("  [DRY-RUN]" if dry_run else ""))
 
-    new_ids = []
-    if max_inventory <= 0 or net_yes < max_inventory:  # only bid if not max long
+    new_orders: list[dict] = []
+    if not skip_bid and (max_inventory <= 0 or net_yes < max_inventory):
         if bid_size >= 1.0:
-            oid = place_quote(client, token_id, "BUY",  our_bid, bid_size, dry_run)
+            oid = place_quote(client, token_id, "BUY", our_bid, bid_size, dry_run)
             if oid:
-                new_ids.append(oid)
-    if max_inventory <= 0 or net_yes > -max_inventory:  # only ask if not max short
+                new_orders.append({"id": oid, "side": "BUY", "price": our_bid,
+                                   "size": bid_size})
+    if not skip_ask and (max_inventory <= 0 or net_yes > -max_inventory):
         if ask_size >= 1.0:
             oid = place_quote(client, token_id, "SELL", our_ask, ask_size, dry_run)
             if oid:
-                new_ids.append(oid)
+                new_orders.append({"id": oid, "side": "SELL", "price": our_ask,
+                                   "size": ask_size})
 
-    inv["active_order_ids"] = new_ids
+    inv["active_orders"]     = new_orders
+    inv["active_order_ids"]  = [o["id"] for o in new_orders]   # legacy compat
     inv["last_quoted"]       = datetime.now(timezone.utc).isoformat()
     inv["last_mid"]          = mid
 
@@ -294,6 +412,12 @@ def main():
     parser.add_argument("--status",       action="store_true",                 help="Show inventory and open-order status")
     parser.add_argument("--close",        action="store_true",                 help="Cancel all quotes for --market-id")
     args = parser.parse_args()
+
+    # ── Kill switch check ─────────────────────────────────────────────────────
+    from risk_guard import is_killed
+    if is_killed():
+        print("⛔  Kill switch is active. Run: poly risk reset")
+        sys.exit(0)
 
     state  = load_state()
     client = get_client(authenticated=not args.dry_run)

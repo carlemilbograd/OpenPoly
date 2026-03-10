@@ -236,6 +236,13 @@ def main():
                              "access and sign the order locally without submitting it")
     args = parser.parse_args()
 
+    # Kill switch check (skip for dry-run)
+    if not args.dry_run:
+        from risk_guard import is_killed
+        if is_killed():
+            print("⛔  Kill switch is active. Run: poly risk reset")
+            sys.exit(0)
+
     from py_clob_client.clob_types import OrderArgs, MarketOrderArgs, OrderType
     from py_clob_client.order_builder.constants import BUY, SELL
 
