@@ -15,6 +15,45 @@ try:
 except ImportError:
     pass
 
+# ── Proxy activation ───────────────────────────────────────────────────────────
+# Set POLYMARKET_PROXY in .env to route ALL traffic (CLOB, Gamma, Data API)
+# through a proxy.  Supports http://, https://, socks5://, socks5h:// schemes.
+# socks5h:// = SOCKS5 with remote DNS (recommended for geo-bypass via ssh -D).
+#
+#   Example — reverse SSH local SOCKS5 proxy:
+#     ssh -D 1080 -N user@remote-server
+#     POLYMARKET_PROXY=socks5h://127.0.0.1:1080
+#
+#   Example — local HTTP proxy (Privoxy, Squid):
+#     POLYMARKET_PROXY=http://127.0.0.1:8118
+#
+# The env vars HTTP_PROXY / HTTPS_PROXY / ALL_PROXY are respected by the
+# `requests` library and therefore by py_clob_client which uses it internally.
+
+_proxy_url: str | None = os.getenv("POLYMARKET_PROXY", "").strip() or None
+
+if _proxy_url:
+    # Inject into the process environment so every requests.Session picks it up
+    # (including those created inside py_clob_client before our code runs)
+    for _env_key in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+                     "http_proxy", "https_proxy", "all_proxy"):
+        os.environ.setdefault(_env_key, _proxy_url)
+
+    # Validate SOCKS support
+    if _proxy_url.startswith("socks"):
+        try:
+            import socks  # noqa: F401  (PySocks)
+        except ImportError:
+            print("WARNING: POLYMARKET_PROXY is a SOCKS URL but PySocks is not installed.")
+            print("         Run: pip install PySocks")
+
+    # Conceal any embedded credentials in the log output
+    from urllib.parse import urlparse as _up
+    _parsed = _up(_proxy_url)
+    _safe = (_parsed.scheme + "://"
+             + (_parsed.hostname or "") + ":" + str(_parsed.port or ""))
+    print(f"[proxy] Routing all Polymarket traffic through {_safe}")
+
 try:
     from py_clob_client.client import ClobClient
     from py_clob_client.clob_types import ApiCreds

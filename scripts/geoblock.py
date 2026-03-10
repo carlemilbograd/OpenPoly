@@ -20,6 +20,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).parent.parent / ".env")
+except ImportError:
+    pass
+
+from _utils import proxy_dict
+
 GEOBLOCK_URL = "https://polymarket.com/api/geoblock"
 
 _BLOCKED_COUNTRIES = {
@@ -51,7 +59,7 @@ def check_geoblock() -> dict:
                 "detail": "requests not installed — run: pip install requests"}
 
     try:
-        resp = requests.get(GEOBLOCK_URL, timeout=10)
+        resp = requests.get(GEOBLOCK_URL, timeout=10, proxies=proxy_dict())
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:

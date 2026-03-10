@@ -53,6 +53,16 @@ POLYMARKET_FUNDER_ADDRESS=0xYOUR_WALLET_ADDRESS   # required for signature types
 POLYMARKET_SIGNATURE_TYPE=0                        # 0=EOA/MetaMask  1=POLY_PROXY(Magic/email)  2=GNOSIS_SAFE(most common web signup)
 ```
 
+Optional variables:
+```
+NEWSAPI_KEY=                    # newsapi.org free-tier key — enriches news pipeline article metadata
+POLYMARKET_PROXY=               # proxy URL to bypass geo-blocking (http://, https://, socks5://, socks5h://)
+                                # Example — reverse SSH SOCKS5 tunnel:
+                                #   ssh -D 1080 -N user@unrestricted-server
+                                #   POLYMARKET_PROXY=socks5h://127.0.0.1:1080
+                                # Routes ALL traffic: CLOB orders, Gamma API, Data API, geoblock check
+```
+
 If credentials are missing, tell the user to add them and show the above format.
 
 ---
@@ -924,6 +934,8 @@ Returns exact country/region and a clear blocked / close-only / ok status.
 | `ok` | Trading fully permitted from your IP |
 | `close_only` | Can close existing positions only (PL, SG, TH, TW) |
 | `blocked` | Region is restricted — no trading allowed |
+
+> **Geo-bypass**: Set `POLYMARKET_PROXY=socks5h://127.0.0.1:1080` (or any HTTP/SOCKS5 proxy) in `.env` to route the geoblock check — and all subsequent trades — through that proxy. Useful when travelling or accessing from a restricted region via a reverse SSH tunnel.
 
 **Commands**:
 ```bash

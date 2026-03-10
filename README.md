@@ -932,6 +932,7 @@ POLYMARKET_API_KEY=                    # auto-filled by setup_credentials.py
 POLYMARKET_API_SECRET=                 # auto-filled
 POLYMARKET_API_PASSPHRASE=             # auto-filled
 NEWSAPI_KEY=                           # optional — newsapi.org free tier
+POLYMARKET_PROXY=                      # optional — proxy for geo-blocked regions (see below)
 ```
 
 **Which signature type?**
@@ -959,6 +960,7 @@ For types `1` and `2`: export your private key from **polymarket.com → Setting
 - Every trade script shows a preview and requires explicit confirmation before submitting
 - Order execution uses the official [py-clob-client](https://github.com/Polymarket/py-clob-client) library only
 - All read operations (market scan, research, simulation) work without credentials
+- `POLYMARKET_PROXY` routes **all** traffic (CLOB orders, Gamma API, Data API) through an HTTP or SOCKS5 proxy — set `POLYMARKET_PROXY=socks5h://127.0.0.1:1080` to use a reverse SSH tunnel (`ssh -D 1080 -N user@server`) and bypass geo-restrictions without a VPN; supports `http://`, `https://`, `socks5://`, `socks5h://`
 
 ---
 

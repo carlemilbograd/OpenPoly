@@ -9,8 +9,9 @@ Provides:
   save_json()     — atomically write a JSON file
   get_mid()       — fetch live midpoint price for a token
   fetch_markets() — fetch active markets from the Gamma API
+  proxy_dict()    — return a requests-compatible proxies dict from POLYMARKET_PROXY
 """
-import json, requests
+import json, os, requests
 from pathlib import Path
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
@@ -23,6 +24,21 @@ FEE = 0.02
 
 # Gamma REST API base URL (also exported from _client.py for backwards compat)
 GAMMA_API = "https://gamma-api.polymarket.com"
+
+
+# ── Proxy helper ───────────────────────────────────────────────────────────────
+def proxy_dict() -> dict[str, str] | None:
+    """
+    Return a requests-compatible proxies dict if POLYMARKET_PROXY is set,
+    otherwise None (requests uses direct connection).
+
+    Usage:
+        resp = requests.get(url, proxies=proxy_dict(), timeout=20)
+    """
+    url = (os.getenv("POLYMARKET_PROXY") or "").strip()
+    if not url:
+        return None
+    return {"http": url, "https": url}
 
 
 # ── JSON state helpers ─────────────────────────────────────────────────────────
@@ -90,7 +106,10 @@ def fetch_markets(
     if search:
         params["search"] = search
     try:
-        resp = requests.get(f"{GAMMA_API}/markets", params=params, timeout=20)
+        resp = requests.get(
+            f"{GAMMA_API}/markets", params=params,
+            timeout=20, proxies=proxy_dict(),
+        )
         if resp.ok:
             data = resp.json()
             return data if isinstance(data, list) else []
