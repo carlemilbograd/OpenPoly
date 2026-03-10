@@ -29,22 +29,28 @@ def main():
         print("ERROR: set POLYMARKET_FUNDER_ADDRESS in .env")
         return
 
-    params = {"maker": address, "limit": args.limit}
+    params = {"user": address, "limit": args.limit}
     if args.market_id:
         params["market"] = args.market_id
 
     resp = requests.get(f"{DATA_API}/trades", params=params)
-    trades = resp.json() if resp.ok else []
+    if resp.ok:
+        body = resp.json()
+        # data-api returns paginated {"data": [...], "count": N, "next_cursor": "..."}
+        # but fall back to bare-list format just in case
+        trades = body.get("data", body) if isinstance(body, dict) else body
+        if not isinstance(trades, list):
+            trades = []
+    else:
+        trades = []
 
     if not trades:
-        # Try CLOB endpoint — pass address explicitly so we never get global trades
+        # CLOB fallback — authenticated request already scoped to your account
         try:
-            trades = client.get_trades(maker=address) or []
-        except TypeError:
-            try:
-                trades = client.get_trades(addr=address) or []
-            except Exception:
-                trades = []
+            clob_trades = client.get_trades() or []
+            trades = clob_trades if isinstance(clob_trades, list) else []
+        except Exception:
+            trades = []
 
     if not trades:
         print(f"\n  No trades found for {address[:10]}...\n")
@@ -58,11 +64,29 @@ def main():
 
     total_spent = 0
     for t in trades:
-        date = str(t.get("timestamp", t.get("createdAt", "?")))[:10]
-        market = str(t.get("title", t.get("market", "?")))[:34]
-        side = t.get("side", t.get("makerAction", "?")).upper()[:4]
+        # data-api uses unix ms or ISO timestamp
+        ts = t.get("timestamp", t.get("createdAt", ""))
+        if ts:
+            try:
+                ts_int = int(float(str(ts)))
+                # unix ms if > 1e10, else unix s
+                if ts_int > 1_000_000_000_000:
+                    ts_int //= 1000
+                from datetime import datetime, timezone
+                date = datetime.fromtimestamp(ts_int, tz=timezone.utc).strftime("%Y-%m-%d")
+            except Exception:
+                date = str(ts)[:10]
+        else:
+            date = "?"
+
+        market = str(t.get("title", t.get("market", t.get("conditionId", "?"))))[:34]
+        # side: data-api uses "BUY"/"SELL"; also check outcome "Yes"/"No"
+        side = (t.get("side") or t.get("makerAction") or t.get("type") or "?").upper()[:4]
+        if side not in ("BUY", "SELL"):
+            outcome = str(t.get("outcome", "")).upper()
+            side = "BUY" if outcome in ("YES", "1") else ("SELL" if outcome in ("NO", "0") else side)
         price = float(t.get("price", 0))
-        size = float(t.get("size", t.get("amount", 0)))
+        size = float(t.get("size", t.get("usdcSize", t.get("amount", 0))))
         total = price * size
         total_spent += total if side == "BUY" else -total
         print(f"  {date:<12} {market:<35} {side:<5} {price:7.4f}  {size:8.2f}  ${total:7.2f}")
