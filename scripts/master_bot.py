@@ -51,13 +51,15 @@ RESTART_DELAY = 10       # seconds before restarting a crashed strategy
 #  Add any new strategy here. master_bot will supervise it automatically.
 #
 #  Keys:
-#    script       str   — filename inside scripts/
-#    loop_flags   list  — flags used when running continuously
-#    once_flags   list  — flags used for a single cycle (--once mode)
-#    budget_flag  str   — CLI flag to pass the per-strategy USDC budget
-#    budget_pct   int   — default share of total budget (%)
-#    alias        list  — short names accepted by --only
-#    description  str   — shown in --status table
+#    script           str   — filename inside scripts/
+#    loop_flags       list  — flags used when running continuously
+#    once_flags       list  — flags used for a single cycle (--once mode)
+#    budget_flag      str   — CLI flag to pass the per-strategy USDC budget
+#    budget_pct       int   — default share of total budget (%)
+#    alias            list  — short names accepted by --only
+#    description      str   — shown in --status table
+#    respawn_interval int   — seconds between re-runs for scan-only (--once) scripts;
+#                             absent for scripts that have their own --loop flag
 # ══════════════════════════════════════════════════════════════════════════════
 STRATEGY_REGISTRY: dict[str, dict] = {
     "auto_arbitrage": {
@@ -70,12 +72,13 @@ STRATEGY_REGISTRY: dict[str, dict] = {
         "description": "Same-market YES/NO arbitrage",
     },
     "correlation_arbitrage": {
-        "script":      "correlation_arbitrage.py",
-        "loop_flags":  ["--once", "--scan"],   # no native loop; master re-spawns
-        "once_flags":  ["--once", "--scan"],
-        "budget_flag": "--budget",
-        "budget_pct":  10,
-        "alias":       ["corr"],
+        "script":           "correlation_arbitrage.py",
+        "loop_flags":       ["--once", "--scan"],   # scan-only; master re-spawns
+        "once_flags":       ["--once", "--scan"],
+        "budget_flag":      "--budget",
+        "budget_pct":       10,
+        "respawn_interval": 30 * 60,   # re-run every 30 min
+        "alias":            ["corr"],
         "description": "Cross-market correlated-pair arbitrage",
     },
     "market_maker": {
@@ -124,22 +127,24 @@ STRATEGY_REGISTRY: dict[str, dict] = {
         "description": "Resolution-timing FADE/RUSH edge",
     },
     "logical_arb": {
-        "script":      "logical_arb.py",
-        "loop_flags":  ["--once"],          # scan-only; master re-spawns
-        "once_flags":  ["--once"],
-        "budget_flag": "--budget",
-        "budget_pct":  10,
-        "alias":       ["la", "logic"],
-        "description": "Logical constraint violation arb",
+        "script":           "logical_arb.py",
+        "loop_flags":       ["--once"],   # scan-only; master re-spawns on interval
+        "once_flags":       ["--once"],
+        "budget_flag":      "--budget",
+        "budget_pct":       10,
+        "respawn_interval": 60 * 60,   # re-run every 1 h
+        "alias":            ["la", "logic"],
+        "description":      "Logical constraint violation arb",
     },
     "resolution_arb": {
-        "script":      "resolution_arb.py",
-        "loop_flags":  ["--once"],
-        "once_flags":  ["--once"],
-        "budget_flag": "--budget",
-        "budget_pct":  5,
-        "alias":       ["res", "resarb"],
-        "description": "Near-settlement YES+NO>1 arb",
+        "script":           "resolution_arb.py",
+        "loop_flags":       ["--once"],   # scan-only; master re-spawns on interval
+        "once_flags":       ["--once"],
+        "budget_flag":      "--budget",
+        "budget_pct":       5,
+        "respawn_interval": 60 * 60,   # re-run every 1 h
+        "alias":            ["res", "resarb"],
+        "description":      "Near-settlement YES+NO>1 arb",
     },
     "news_latency": {
         "script":      "news_latency.py",
@@ -503,8 +508,8 @@ def _supervisor_loop(strategies: list[str], total_budget: float,
     # ── Continuous supervisor loop ────────────────────────────────────────────
     last_heartbeat = time.time()
     restart_counts: dict[str, int] = {n: 0 for n in strategies}
-    corr_arb_interval = 30 * 60   # correlation_arbitrage has no native loop
-    corr_arb_last     = 0.0
+    # Track last-run time for scan-only strategies (those with respawn_interval)
+    respawn_last: dict[str, float] = {n: 0.0 for n in strategies}
 
     print(f"  Supervisor running. Press Ctrl+C to stop.\n"
           f"  Use:  poly master --status\n"
@@ -537,15 +542,17 @@ def _supervisor_loop(strategies: list[str], total_budget: float,
             cfg = STRATEGY_REGISTRY[name]
             pid = p.pid if p else 0
 
-            # ── Special case: correlation_arbitrage has no loop flag ──────────
-            # Master re-spawns it on a fixed interval
-            if name == "correlation_arbitrage":
+            # ── Scan-only strategies: re-spawn on a fixed interval ───────────
+            # These exit normally after one scan; treat a stopped process as
+            # "done for now" rather than a crash, and respawn after the interval.
+            if cfg.get("respawn_interval"):
                 alive = p and _is_alive(pid)
-                if not alive and (time.time() - corr_arb_last) >= corr_arb_interval:
+                elapsed = time.time() - respawn_last[name]
+                if not alive and elapsed >= cfg["respawn_interval"]:
                     budget = _budget_for(name, total_budget) if total_budget > 0 else 0
                     p = _spawn(name, cfg, budget, dry_run, once=True, state=state)
                     procs[name] = p
-                    corr_arb_last = time.time()
+                    respawn_last[name] = time.time()
                 continue
 
             # ── All other strategies: restart on crash ────────────────────────

@@ -1058,17 +1058,19 @@ To add a new strategy:
 | Name | Alias | Budget % | Description |
 |---|---|---|---|
 | `auto_arbitrage` | `arb` | 25% | YES/NO same-market arbitrage |
-| `correlation_arbitrage` | `corr` | 10% | Cross-market correlated-pair arb |
+| `correlation_arbitrage` | `corr` | 10% | Cross-market correlated-pair arb ★ |
 | `market_maker` | `mm` | 15% | Bid/ask spread capture |
 | `news_trader` | `news` | 10% | News-driven momentum trades |
 | `ai_automation` | `ai` | 5% | AI/heuristic signal trading |
 | `time_decay` | `td`, `decay` | 15% | Resolution-timing FADE/RUSH edge |
-| `logical_arb` | `la`, `logic` | 10% | Logical constraint violation arb |
-| `resolution_arb` | `res`, `resarb` | 5% | Near-settlement YES+NO>1 arb |
+| `logical_arb` | `la`, `logic` | 10% | Logical constraint violation arb ★ |
+| `resolution_arb` | `res`, `resarb` | 5% | Near-settlement YES+NO>1 arb ★ |
 | `news_latency` | `nl`, `fast-news` | 5% | Sub-10s RSS news trading |
 | `auto_monitor` | `mon`, `monitor` | 0% | Market anomaly alerts (no trading) |
 
-**Restart behaviour**: up to `MAX_RESTARTS=5` per strategy with `RESTART_DELAY=10s`. After 5 failures the strategy is abandoned and an OpenClaw notification is sent.
+★ **Scan-only** (`respawn_interval`): these scripts exit normally after one scan pass (no built-in loop). The master treats a clean exit as "run complete" — **not** a crash — and re-spawns them after a fixed interval (`correlation_arbitrage` every **30 min**, `logical_arb` and `resolution_arb` every **1 h**). Restart counters are not incremented on clean exits.
+
+**Restart behaviour**: up to `MAX_RESTARTS=5` per strategy with `RESTART_DELAY=10s` for strategies that crash unexpectedly. After 5 failures the strategy is abandoned and a notification is sent. Scan-only strategies (★) use `respawn_interval` instead and are never counted as crashes.
 
 **Heartbeat**: every `HEARTBEAT_MIN=30` minutes (overridable with `--heartbeat N`) a system_event notification is pushed with live status of all strategies.
 
@@ -1272,7 +1274,7 @@ poly logical-arb --status
 
 **State file**: `logical_arb_state.json`
 
-**STRATEGY_REGISTRY key**: `"logical_arb"`, alias `["la", "logic"]`, `budget_pct=10`
+**STRATEGY_REGISTRY key**: `"logical_arb"`, alias `["la", "logic"]`, `budget_pct=10`, `respawn_interval=3600` (1 h)
 
 ---
 
@@ -1304,7 +1306,7 @@ poly res-arb --status
 
 **State file**: `resolution_arb_state.json`
 
-**STRATEGY_REGISTRY key**: `"resolution_arb"`, alias `["res", "resarb"]`, `budget_pct=5`
+**STRATEGY_REGISTRY key**: `"resolution_arb"`, alias `["res", "resarb"]`, `budget_pct=5`, `respawn_interval=3600` (1 h)
 
 ---
 
