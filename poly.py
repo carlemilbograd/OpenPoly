@@ -66,6 +66,13 @@ COMMANDS = {
     # Notifications
     "notify":       ("notifier.py",              "Bot trade notifications  [--limit N] [--since 2h] [--bot NAME] [--clear]"),
 
+    # New strategies
+    "time-decay":   ("time_decay.py",            "Resolution-timing edge  [--scan] [--execute --budget N] [--once] [--loop]"),
+    "logical-arb":  ("logical_arb.py",           "Logical constraint arb  [--scan] [--execute --budget N] [--once]"),
+    "res-arb":      ("resolution_arb.py",        "Near-settlement YES+NO>1 arb  [--scan] [--execute --budget N] [--once]"),
+    "news-latency": ("news_latency.py",          "Sub-10s RSS news trading  [--build-map] [--loop] [--once] [--budget N]"),
+    "strategy-eval":("strategy_evaluator.py",    "Strategy performance + auto-disable  [--report] [--all] [--auto-disable]"),
+
     # All-in-one
     "master":       ("master_bot.py",             "Master supervisor — all strategies  --start --budget N | --status | --stop | --pnl"),
     "setup":        ("setup_all.py",              "One-command automated setup  [--yes] [--dry-run] [--skip-creds]"),
@@ -94,7 +101,6 @@ ALIASES = {
     "all":          "omni",
     "run-all":      "omni",
     "bt":           "backtest",
-    "evaluate":     "eval",
     "guard":        "risk",
     "kill":         "risk",
     "safety":       "risk",
@@ -119,6 +125,19 @@ ALIASES = {
     "master-bot":   "master",
     "supervisor":   "master",
     "run-all":      "master",
+
+    # new-strategy aliases
+    "td":           "time-decay",
+    "decay":        "time-decay",
+    "la":           "logical-arb",
+    "logic":        "logical-arb",
+    "resarb":       "res-arb",
+    "resolution":   "res-arb",
+    "nl":           "news-latency",
+    "fast-news":    "news-latency",
+    "evaluate":     "strategy-eval",
+    "perf":         "strategy-eval",
+    "performance":  "strategy-eval",
 
     # setup aliases
     "init":         "setup",
@@ -148,6 +167,7 @@ def _print_help():
         ("Trading", ["trade", "cancel", "redeem"]),
         ("Monitoring", ["watch", "monitor"]),
         ("Automation", ["auto-arb", "schedule", "news", "mm", "signals", "omni"]),
+        ("New Strategies", ["time-decay", "logical-arb", "res-arb", "news-latency", "strategy-eval"]),
         ("Evaluation & Safety", ["backtest", "eval", "risk", "db", "prob", "geoblock"]),
         ("Notifications", ["notify"]),
         ("All-in-one", ["master", "setup"]),

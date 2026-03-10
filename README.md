@@ -146,6 +146,12 @@ These are real examples of what you can say. The agent picks the right script.
 | Generate AI signals | `ai_automation.py --once --signals` |
 | Run all strategies with $500 | `master_bot.py --start --budget 500` |
 | Run only arb + market maker | `master_bot.py --start --only arb,mm --budget 300` |
+| Scan resolution-timing mispricings | `time_decay.py --scan` |
+| Trade logical constraint violations | `logical_arb.py --scan --execute --budget 50` |
+| Near-settlement guaranteed arb | `resolution_arb.py --once` |
+| Fast RSS news trading (10s) | `news_latency.py --loop --budget 20` |
+| How are my strategies performing? | `strategy_evaluator.py --report` |
+| Auto-disable losing strategies | `strategy_evaluator.py --auto-disable --min-trades 30` |
 | First-time setup (automated) | `setup_all.py --yes` |
 | Redeem resolved winnings | `redeem.py --dry-run` |
 | Schedule auto arb every 15 min | `scheduler.py add` + `scheduler.py start` |
@@ -514,7 +520,7 @@ python scripts/master_bot.py --stop
 python scripts/master_bot.py --list-strategies
 ```
 
-Default budget split: `arb:30%` · `corr:20%` · `mm:20%` · `news:15%` · `ai:10%` · `monitor:0%`
+Default budget split: `arb:25%` · `corr:10%` · `mm:15%` · `news:10%` · `ai:5%` · `time_decay:15%` · `logical_arb:10%` · `res_arb:5%` · `news_latency:5%` · `monitor:0%`
 
 Features over omni_strategy: crash auto-restart (up to 5×), heartbeat notifications every 30 min, OpenClaw lifecycle alerts, `--only` subset mode, STRATEGY_REGISTRY pattern (single place to add new strategies).
 </details>

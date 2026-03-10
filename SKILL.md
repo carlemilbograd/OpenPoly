@@ -1013,6 +1013,7 @@ poly master --pnl                           # combined P&L across all strategies
 poly master --stop                          # gracefully stop all subprocesses
 poly master --list-strategies              # list registry with aliases + budget %
 poly master --heartbeat 60                  # custom heartbeat interval (minutes)
+poly master --evaluate                      # performance report + recommendations
 ```
 
 **Aliases**: `poly bot` · `poly supervisor` · `poly run-all` · `poly master-bot`
@@ -1030,11 +1031,15 @@ To add a new strategy:
 **Current registry**:
 | Name | Alias | Budget % | Description |
 |---|---|---|---|
-| `auto_arbitrage` | `arb` | 30% | YES/NO same-market arbitrage |
-| `correlation_arbitrage` | `corr` | 20% | Cross-market correlated-pair arb |
-| `market_maker` | `mm` | 20% | Bid/ask spread capture |
-| `news_trader` | `news` | 15% | News-driven momentum trades |
-| `ai_automation` | `ai` | 10% | AI/heuristic signal trading |
+| `auto_arbitrage` | `arb` | 25% | YES/NO same-market arbitrage |
+| `correlation_arbitrage` | `corr` | 10% | Cross-market correlated-pair arb |
+| `market_maker` | `mm` | 15% | Bid/ask spread capture |
+| `news_trader` | `news` | 10% | News-driven momentum trades |
+| `ai_automation` | `ai` | 5% | AI/heuristic signal trading |
+| `time_decay` | `td`, `decay` | 15% | Resolution-timing FADE/RUSH edge |
+| `logical_arb` | `la`, `logic` | 10% | Logical constraint violation arb |
+| `resolution_arb` | `res`, `resarb` | 5% | Near-settlement YES+NO>1 arb |
+| `news_latency` | `nl`, `fast-news` | 5% | Sub-10s RSS news trading |
 | `auto_monitor` | `mon`, `monitor` | 0% | Market anomaly alerts (no trading) |
 
 **Restart behaviour**: up to `MAX_RESTARTS=5` per strategy with `RESTART_DELAY=10s`. After 5 failures the strategy is abandoned and an OpenClaw notification is sent.
@@ -1158,12 +1163,14 @@ def _fair_no_price(yes_price, days):
 
 **CLI**:
 ```bash
-python scripts/time_decay.py --scan [--max-days N] [--min-edge X] [--top N] [--tag KEYWORD]
-python scripts/time_decay.py --scan --execute --budget 25 [--dry-run]
-python scripts/time_decay.py --once
-python scripts/time_decay.py --loop --interval 300
-python scripts/time_decay.py --status
+poly time-decay --scan [--max-days N] [--min-edge X] [--top N] [--tag KEYWORD]
+poly time-decay --scan --execute --budget 25 [--dry-run]
+poly time-decay --once
+poly time-decay --loop --interval 300
+poly time-decay --status
 ```
+
+**Aliases**: `poly td` · `poly decay`
 
 **State file**: `time_decay_state.json` — `runs`, `trades_executed`, `total_spent`, `total_profit_est`, `history`
 
@@ -1196,11 +1203,13 @@ python scripts/time_decay.py --status
 
 **CLI**:
 ```bash
-python scripts/logical_arb.py --scan [--min-edge X] [--limit N] [--top N]
-python scripts/logical_arb.py --scan --execute --budget 50 [--dry-run]
-python scripts/logical_arb.py --once
-python scripts/logical_arb.py --status
+poly logical-arb --scan [--min-edge X] [--limit N] [--top N]
+poly logical-arb --scan --execute --budget 50 [--dry-run]
+poly logical-arb --once
+poly logical-arb --status
 ```
+
+**Aliases**: `poly la` · `poly logic`
 
 **State file**: `logical_arb_state.json`
 
@@ -1225,12 +1234,14 @@ python scripts/logical_arb.py --status
 
 **CLI**:
 ```bash
-python scripts/resolution_arb.py --scan [--max-days N] [--min-edge X] [--limit N]
-python scripts/resolution_arb.py --scan --execute --budget 75
-python scripts/resolution_arb.py --once
-python scripts/resolution_arb.py --include-anytime   # also check event-triggered markets
-python scripts/resolution_arb.py --status
+poly res-arb --scan [--max-days N] [--min-edge X] [--limit N]
+poly res-arb --scan --execute --budget 75
+poly res-arb --once
+poly res-arb --include-anytime   # also check event-triggered markets
+poly res-arb --status
 ```
+
+**Aliases**: `poly resarb` · `poly resolution`
 
 **State file**: `resolution_arb_state.json`
 
@@ -1258,12 +1269,14 @@ python scripts/resolution_arb.py --status
 
 **CLI**:
 ```bash
-python scripts/news_latency.py --build-map          # must run once first
-python scripts/news_latency.py --loop [--interval 10] [--budget 20]
-python scripts/news_latency.py --once
-python scripts/news_latency.py --dry-run
-python scripts/news_latency.py --status
+poly news-latency --build-map          # must run once first
+poly news-latency --loop [--interval 10] [--budget 20]
+poly news-latency --once
+poly news-latency --dry-run
+poly news-latency --status
 ```
+
+**Aliases**: `poly nl` · `poly fast-news`
 
 **State file**: `news_latency_state.json`, **map file**: `news_latency_map.json`
 
@@ -1299,16 +1312,18 @@ news_latency_state.json
 
 **CLI**:
 ```bash
-python scripts/strategy_evaluator.py --report            # ranked table
-python scripts/strategy_evaluator.py --report --json     # machine-readable
-python scripts/strategy_evaluator.py --all               # report + recommend
-python scripts/strategy_evaluator.py --auto-disable [--min-trades N]
-python scripts/strategy_evaluator.py --recommend
-python scripts/strategy_evaluator.py --reset STRATEGY    # clear state file
-python scripts/strategy_evaluator.py --re-enable STRATEGY
+poly strategy-eval --report            # ranked table
+poly strategy-eval --report --json     # machine-readable
+poly strategy-eval --all               # report + recommend
+poly strategy-eval --auto-disable [--min-trades N]
+poly strategy-eval --recommend
+poly strategy-eval --reset STRATEGY    # clear state file
+poly strategy-eval --re-enable STRATEGY
 # shortcut:
-python scripts/master_bot.py --evaluate
+poly master --evaluate
 ```
+
+**Aliases**: `poly evaluate` · `poly perf` · `poly performance`
 
 **NL invocations**:
 - "How are my strategies performing?" → `--report`
