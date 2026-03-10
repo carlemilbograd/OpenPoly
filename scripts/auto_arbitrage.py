@@ -350,6 +350,27 @@ def run_once(args, client, state: dict) -> dict:
         # Keep last 500 history entries
         state["history"] = state["history"][-500:]
 
+        # ── Notify OpenClaw ──────────────────────────────────────────────────
+        try:
+            from notifier import notify_trade_opened
+            notify_trade_opened(
+                bot="auto_arbitrage",
+                market=best["question"],
+                market_id=best["market_id"],
+                direction="ARB",
+                amount_usd=round(budget, 2),
+                price=None,
+                order_ids=order_ids,
+                extras={
+                    "legs":           len(best["outcomes"]),
+                    "gap_pct":        round(best["gap"] * 100, 3),
+                    "net_profit_pct": round(best["net_profit_pct"] * 100, 3),
+                    "profit_est_usd": round(profit_est, 4),
+                },
+            )
+        except Exception:
+            pass
+
     save_state(state)
     return state
 

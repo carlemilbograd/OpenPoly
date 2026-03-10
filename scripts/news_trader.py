@@ -105,6 +105,24 @@ def execute_result(pr: PipelineResult, budget: float, client, dry_run: bool) -> 
         oid    = (resp or {}).get("orderID") or (resp or {}).get("id", "?")
         print(f"      OK Placed {direction} order {str(oid)[:20]}  ${budget:.2f}  @ {price:.4f}")
         record.update({"status": "placed", "order_id": str(oid)})
+        # ── Notify OpenClaw ──────────────────────────────────────────────────
+        try:
+            from notifier import notify_trade_opened
+            notify_trade_opened(
+                bot="news_trader",
+                market=record["market"],
+                market_id=record.get("market_id", ""),
+                direction=direction,
+                amount_usd=round(budget, 2),
+                price=price,
+                order_ids=[str(oid)],
+                extras={
+                    "edge":   record.get("edge"),
+                    "impact": record.get("impact"),
+                },
+            )
+        except Exception:
+            pass
     except Exception as exc:
         print(f"      FAIL Order failed: {exc}")
         record.update({"status": "error", "error": str(exc)})

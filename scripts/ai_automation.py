@@ -274,6 +274,25 @@ def execute_signal(signal: dict, budget: float, client, dry_run: bool):
         resp   = client.post_order(signed, OrderType.GTC)
         oid    = (resp or {}).get("orderID") or (resp or {}).get("id", "?")
         log(f"✅ Placed order {str(oid)[:20]}")
+        # ── Notify OpenClaw ──────────────────────────────────────────────────
+        try:
+            from notifier import notify_trade_opened
+            notify_trade_opened(
+                bot="ai_automation",
+                market=signal["question"],
+                market_id=signal.get("market_id", ""),
+                direction=signal["direction"],
+                amount_usd=round(budget, 2),
+                price=round(price, 4),
+                order_ids=[str(oid)],
+                extras={
+                    "confidence":   signal["confidence"],
+                    "edge_estimate": signal["edge_estimate"],
+                    "rationale":    signal.get("rationale", "")[:120],
+                },
+            )
+        except Exception:
+            pass
     except Exception as e:
         log(f"❌ Order failed: {e}")
 

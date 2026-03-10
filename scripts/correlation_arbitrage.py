@@ -281,6 +281,7 @@ def execute_opportunity(opp: dict, budget: float, client, confirm: bool = True):
             return
 
     print(f"\n  Placing {len(legs)} orders...")
+    placed_ids: list[str] = []
     for leg in legs:
         leg_cost = shares * leg["price"]
         o_args   = OrderArgs(
@@ -294,8 +295,32 @@ def execute_opportunity(opp: dict, budget: float, client, confirm: bool = True):
             resp   = client.post_order(signed, OrderType.GTC)
             oid    = (resp or {}).get("orderID") or (resp or {}).get("id", "?")
             print(f"  ✅ {leg['label']}  order {str(oid)[:20]}")
+            placed_ids.append(str(oid))
         except Exception as e:
             print(f"  ❌ {leg['label']} FAILED: {e}")
+
+    # ── Notify OpenClaw ──────────────────────────────────────────────────────
+    if placed_ids:
+        try:
+            from notifier import notify_trade_opened
+            notify_trade_opened(
+                bot="correlation_arbitrage",
+                market=f"{opp['question_a'][:50]} ↔ {opp['question_b'][:50]}",
+                market_id=opp.get("market_id_a", ""),
+                direction="ARB",
+                amount_usd=round(budget, 2),
+                price=None,
+                order_ids=placed_ids,
+                extras={
+                    "type":     opp.get("type", ""),
+                    "raw_edge": round(opp.get("raw_edge", 0) * 100, 3),
+                    "net_edge": round(opp.get("net_edge", 0) * 100, 3),
+                    "legs":     len(placed_ids),
+                    "profit_est_usd": round(profit_est, 4),
+                },
+            )
+        except Exception:
+            pass
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────

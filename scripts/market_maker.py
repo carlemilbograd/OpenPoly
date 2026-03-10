@@ -252,6 +252,33 @@ def _evaluate_existing_quotes(
                 inv["net_yes"]   = inv.get("net_yes", 0.0) - size_filled
                 inv["fills"]     = inv.get("fills", 0) + 1
                 inv["pnl_est"]   = inv.get("pnl_est", 0.0) + size_filled * price
+            # ── Notify OpenClaw ──────────────────────────────────────────────
+            try:
+                from notifier import notify_trade_opened, notify_trade_closed
+                _market_q = inv.get("question", token_id[:16])
+                _pnl = inv.get("pnl_est")
+                if side == "BUY":
+                    notify_trade_opened(
+                        bot="market_maker",
+                        market=_market_q,
+                        direction="BUY",
+                        amount_usd=round(size_filled, 2),
+                        price=round(price, 4),
+                        order_ids=[oid],
+                        extras={"fill_pct": round(fill["fill_pct"], 2)},
+                    )
+                else:
+                    notify_trade_closed(
+                        bot="market_maker",
+                        market=_market_q,
+                        direction="SELL",
+                        amount_usd=round(size_filled, 2),
+                        pnl_est=round(_pnl, 4) if _pnl is not None else None,
+                        order_ids=[oid],
+                        extras={"fill_pct": round(fill["fill_pct"], 2)},
+                    )
+            except Exception:
+                pass
 
     skip_requote = all_still_competitive and not filled_sides
     if skip_requote:
@@ -373,6 +400,24 @@ def refresh_quotes(client, token_id: str, market_q: str, spread: float,
     inv["active_order_ids"]  = [o["id"] for o in new_orders]   # legacy compat
     inv["last_quoted"]       = datetime.now(timezone.utc).isoformat()
     inv["last_mid"]          = mid
+
+    # ── Notify OpenClaw when quotes are placed (non-dry-run, non-empty) ──────
+    if new_orders and not dry_run:
+        try:
+            from notifier import notify_trade_opened
+            sides_label = "/".join(dict.fromkeys(o["side"] for o in new_orders))
+            total_quoted = round(sum(o["size"] for o in new_orders), 2)
+            notify_trade_opened(
+                bot="market_maker",
+                market=market_q,
+                direction=sides_label,
+                amount_usd=total_quoted,
+                price=round(mid, 4),
+                order_ids=[o["id"] for o in new_orders],
+                extras={"spread": spread, "mid": mid},
+            )
+        except Exception:
+            pass
 
 
 # ── Status display ─────────────────────────────────────────────────────────────
