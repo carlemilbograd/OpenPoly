@@ -27,7 +27,7 @@ Polymarket APIs. It can:
 9. **Automation Scheduler** — register any script to run on any interval, start/stop background daemon
 10. **Market Monitor** — automated scanning for price moves, arb gaps, volume spikes, and 50/50 opportunities
 11. **Geo-block Check** — verify whether your current IP is permitted to trade on Polymarket (official API, no credentials required)
-12. **Trade Notifications** — all auto bots push open/close events with macOS desktop banners and a persistent JSON log readable by the agent
+12. **Trade Notifications** — all auto bots push open/close events with macOS desktop banners, optional Telegram push (`TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`), and a persistent JSON log readable by the agent
 13. **Master Supervisor** — `master_bot.py` runs all strategies as supervised subprocesses with auto crash-restart, heartbeat notifications, and a single STRATEGY_REGISTRY to register new strategies
 14. **Automated Setup** — `setup_all.py` is an idempotent 8-step wizard that configures the entire skill from scratch in one command
 15. **Input Guards** — `_guards.py` enforces hard minimum order sizes and API rate limits across all bots; mis-configured values are caught at startup before any order is placed

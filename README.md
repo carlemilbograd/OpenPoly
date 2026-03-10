@@ -58,7 +58,7 @@ No intermediary. No dashboard. Just your agent and a full trading toolkit.
 | **Prob model** | Calibrated fair-probability engine — Bayesian prior + signal updates + Kelly sizing |
 | **On-chain** | Redeem resolved winning positions via Polygon CTF contract |
 | **Geo-block check** | Official IP-based check — returns country, region, blocked / close-only status |
-| **Notifications** | All auto bots push trade open/close events — macOS banners + persistent JSON log |
+| **Notifications** | All auto bots push trade open/close events — macOS banners + persistent JSON log + optional **Telegram** push |
 | **Master bot** | Supervised all-in-one runner — crash auto-restart, heartbeat alerts, `--only` subset, kill-switch aware |
 | **Automated setup** | One-command idempotent setup wizard — deps, .env, key validation, API creds, risk guard, scheduler, DB |
 | **Security** | API key entropy check at startup, secret masking in all error output, kill switch wired into every auto bot |
@@ -921,7 +921,7 @@ OpenPoly/
     ├── risk_guard.py          # daily loss limit + kill switch
     ├── db.py                  # unified SQLite data layer
     ├── prob_model.py          # calibrated fair-probability + Kelly sizing
-    ├── notifier.py            # trade open/close + lifecycle notifications → desktop + JSON log
+    ├── notifier.py            # trade open/close + lifecycle notifications → desktop + Telegram + JSON log
     ├── master_bot.py          # supervised all-in-one runner — crash-restart, heartbeat, STRATEGY_REGISTRY
     ├── setup_all.py           # idempotent 8-step setup wizard
     ├── time_decay.py          # resolution-timing edge — FADE overpriced YES near deadline
