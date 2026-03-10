@@ -128,8 +128,8 @@ def main():
                         help="Market ID to execute arb on")
     parser.add_argument("--scan", action="store_true",
                         help="Auto-scan and pick the best arb opportunity")
-    parser.add_argument("--budget", "-b", type=float, default=50.0,
-                        help="Total USDC budget to deploy (default 50)")
+    parser.add_argument("--budget", "-b", type=float, default=1.0,
+                        help="Total USDC budget to deploy (default 1)")
     parser.add_argument("--min-gap", type=float, default=0.03,
                         help="Minimum arb gap required (default 0.03 = 3%%)")
     parser.add_argument("--scan-limit", type=int, default=100,

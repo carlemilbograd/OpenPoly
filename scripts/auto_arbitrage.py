@@ -386,8 +386,8 @@ def main():
                         help="Minimum arb gap to execute (default 0.005 = 0.5%%)")
     parser.add_argument("--budget-pct", type=float, default=0.05,
                         help="Fraction of balance to risk per round (default 0.05 = 5%%)")
-    parser.add_argument("--max-budget", type=float, default=0.0,
-                        help="Hard cap on USDC per round (0 = no cap)")
+    parser.add_argument("--max-budget", type=float, default=1.0,
+                        help="Hard cap on USDC per round (default 1; 0 = no cap)")
     parser.add_argument("--tag", default="",
                         help="Restrict scan to a market tag (e.g. politics, crypto)")
     parser.add_argument("--scan-limit", type=int, default=200,

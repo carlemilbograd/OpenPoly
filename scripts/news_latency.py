@@ -288,8 +288,8 @@ def main():
                       help="Rebuild keyword-market map and exit")
     p.add_argument("--interval",    type=int,   default=POLL_INTERVAL,
                    help=f"Poll interval in seconds (min {POLL_INTERVAL}, default {POLL_INTERVAL})")
-    p.add_argument("--budget",      type=float, default=20.0,
-                   help="USDC per trade (default 20)")
+    p.add_argument("--budget",      type=float, default=1.0,
+                   help="USDC per trade (default 1)")
     p.add_argument("--min-edge",    type=float, default=MIN_EDGE,
                    help=f"Min directional edge (default {MIN_EDGE})")
     p.add_argument("--dry-run",     action="store_true")

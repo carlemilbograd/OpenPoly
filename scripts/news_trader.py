@@ -201,8 +201,8 @@ def main():
     # Trade settings
     p.add_argument("--dry-run",       action="store_true",
                    help="Analyse only; no orders placed")
-    p.add_argument("--budget",        type=float, default=25.0,
-                   help="USDC per trade (default 25)")
+    p.add_argument("--budget",        type=float, default=1.0,
+                   help="USDC per trade (default 1)")
     p.add_argument("--min-edge",      type=float, default=0.06,
                    help="Min estimated edge (default 0.06)")
     p.add_argument("--min-relevance", type=float, default=0.15,

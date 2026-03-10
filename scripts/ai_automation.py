@@ -348,7 +348,7 @@ def main():
     parser.add_argument("--min-confidence", type=float, default=0.60, help="Min confidence to execute (0.60=60%%)")
     parser.add_argument("--execute",        action="store_true",  help="Execute signals meeting threshold")
     parser.add_argument("--dry-run",        action="store_true",  help="Simulate execution only")
-    parser.add_argument("--budget",         type=float, default=20.0, help="USDC per signal (default 20)")
+    parser.add_argument("--budget",         type=float, default=1.0,  help="USDC per signal (default 1)")
     parser.add_argument("--signals",        action="store_true",  help="Print currently saved signals")
     args = parser.parse_args()
 

@@ -350,7 +350,7 @@ Parameters:
 - `--interval`: how often to scan (30s / 5m / 15m / 1h / 1d)
 - `--min-gap`: minimum arb gap to execute (e.g. 0.005 = 0.5%)
 - `--budget-pct`: fraction of current balance to risk per round (e.g. 0.10 = 10%)
-- `--max-budget`: hard USDC cap per round (0 = no cap)
+- `--max-budget`: hard USDC cap per round (default 1; 0 = no cap)
 - `--tag`: only scan markets with this tag (e.g. politics, crypto)
 - `--dry-run`: simulate only, no orders placed
 
@@ -555,7 +555,7 @@ poly corr-arb --once                    # single-shot for scheduler
 - `--limit` int (default 150): number of markets to scan
 - `--tag` str: restrict to a Gamma API tag (politics, crypto, etc.)
 - `--execute`: execute the best opportunity found
-- `--budget` float: USDC for execution (default 50)
+- `--budget` float: USDC for execution (default 1)
 - `--confirm`: skip interactive confirmation prompt
 - `--json`: raw JSON output
 
@@ -595,7 +595,7 @@ poly news --history --json                # JSON output
 ```
 
 **Key arguments**:
-- `--budget` float (default 25): USDC per trade
+- `--budget` float (default 1): USDC per trade
 - `--min-edge` float (default 0.06): minimum estimated price gap to trade
 - `--min-relevance` float (default 0.15): minimum story↔market token overlap
 - `--min-impact` float (default 0.15): minimum 5-factor impact score
@@ -635,7 +635,7 @@ poly mm --close --market-id TOKEN       # cancel all quotes
 
 **Arguments**:
 - `--spread` float (default 0.02): total spread as fraction (0.02 = 2%)
-- `--size` float (default 10): USDC per side per quote
+- `--size` float (default 1): USDC per side per quote
 - `--max-inventory` float (default 50): max net YES exposure before skewing quotes
 - `--interval` float (default 30): seconds between quote refreshes
 
@@ -669,7 +669,7 @@ poly signals --loop --interval 30            # refresh every 30 min
 - `--research-top` int (default 20): markets to analyze per run
 - `--min-edge` float (default 0.03): minimum edge to generate a signal
 - `--min-confidence` float (default 0.60): minimum confidence to execute
-- `--budget` float (default 20): USDC per executed signal
+- `--budget` float (default 1): USDC per executed signal
 
 **State file**: `ai_signals.json`
 
@@ -1223,7 +1223,7 @@ def _fair_no_price(yes_price, days):
 **CLI**:
 ```bash
 poly time-decay --scan [--max-days N] [--min-edge X] [--top N] [--tag KEYWORD]
-poly time-decay --scan --execute --budget 25 [--dry-run]
+poly time-decay --scan --execute --budget 1 [--dry-run]
 poly time-decay --once
 poly time-decay --loop --interval 300
 poly time-decay --status
@@ -1263,7 +1263,7 @@ poly time-decay --status
 **CLI**:
 ```bash
 poly logical-arb --scan [--min-edge X] [--limit N] [--top N]
-poly logical-arb --scan --execute --budget 50 [--dry-run]
+poly logical-arb --scan --execute --budget 1 [--dry-run]
 poly logical-arb --once
 poly logical-arb --status
 ```
@@ -1294,7 +1294,7 @@ poly logical-arb --status
 **CLI**:
 ```bash
 poly res-arb --scan [--max-days N] [--min-edge X] [--limit N]
-poly res-arb --scan --execute --budget 75
+poly res-arb --scan --execute --budget 1
 poly res-arb --once
 poly res-arb --include-anytime   # also check event-triggered markets
 poly res-arb --status
@@ -1329,7 +1329,7 @@ poly res-arb --status
 **CLI**:
 ```bash
 poly news-latency --build-map          # must run once first
-poly news-latency --loop [--interval 10] [--budget 20]
+poly news-latency --loop [--interval 10] [--budget 1]
 poly news-latency --once
 poly news-latency --dry-run
 poly news-latency --status

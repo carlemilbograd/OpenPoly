@@ -333,7 +333,7 @@ def main():
     parser.add_argument("--limit",      type=int,   default=150,  help="Markets to scan (default 150)")
     parser.add_argument("--tag",        default="",               help="Filter by tag (politics, crypto...)")
     parser.add_argument("--execute",    action="store_true",       help="Execute best opportunity after confirmation")
-    parser.add_argument("--budget",     type=float, default=50.0,  help="USDC budget per execution (default 50)")
+    parser.add_argument("--budget",     type=float, default=1.0,   help="USDC budget per execution (default 1)")
     parser.add_argument("--confirm",    action="store_true",       help="Skip interactive confirmation")
     parser.add_argument("--json",       action="store_true",       help="Output raw JSON")
     args = parser.parse_args()

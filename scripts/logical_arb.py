@@ -344,8 +344,8 @@ def main():
     p.add_argument("--once",      action="store_true", help="Single scan + execute, then exit")
     p.add_argument("--min-edge",  type=float, default=DEFAULT_MIN_EDGE,
                    help=f"Minimum net edge (default {DEFAULT_MIN_EDGE})")
-    p.add_argument("--budget",    type=float, default=50.0,
-                   help="Total USDC per trade pair (split 50/50, default 50)")
+    p.add_argument("--budget",    type=float, default=1.0,
+                   help="Total USDC per trade pair (split 50/50, default 1)")
     p.add_argument("--limit",     type=int,   default=DEFAULT_LIMIT,
                    help=f"Markets to scan (default {DEFAULT_LIMIT})")
     p.add_argument("--top",       type=int,   default=5, help="Results to show")

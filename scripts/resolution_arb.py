@@ -267,8 +267,8 @@ def main():
                    help=f"Max days to resolution (default {DEFAULT_MAX_DAYS})")
     p.add_argument("--min-edge",      type=float, default=DEFAULT_MIN_EDGE,
                    help=f"Minimum net edge (default {DEFAULT_MIN_EDGE})")
-    p.add_argument("--budget",        type=float, default=50.0,
-                   help="USDC per trade (default 50)")
+    p.add_argument("--budget",        type=float, default=1.0,
+                   help="USDC per trade (default 1)")
     p.add_argument("--limit",         type=int,   default=400,
                    help="Markets to scan (default 400)")
     p.add_argument("--include-anytime", action="store_true",

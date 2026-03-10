@@ -280,8 +280,8 @@ def main():
                    help=f"Max days to resolution (default {DEFAULT_MAX_DAYS})")
     p.add_argument("--min-edge",  type=float, default=MIN_EDGE,
                    help=f"Min net edge (default {MIN_EDGE})")
-    p.add_argument("--budget",    type=float, default=25.0,
-                   help="USDC per trade (default 25)")
+    p.add_argument("--budget",    type=float, default=1.0,
+                   help="USDC per trade (default 1)")
     p.add_argument("--limit",     type=int,   default=300,
                    help="Markets to scan (default 300)")
     p.add_argument("--tag",       default="",  help="Filter by tag (politics, crypto…)")
