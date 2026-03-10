@@ -159,6 +159,12 @@ def _print(line: str):
     print(f"  [{ts}]  🔔  {line}", flush=True)
 
 
+def _he(s: str) -> str:
+    """HTML-escape a string for safe insertion into Telegram HTML messages."""
+    import html
+    return html.escape(str(s))
+
+
 def _record(event: str, bot: str, market: str, market_id: str, direction: str,
             amount_usd: float, price: float | None, order_ids: list,
             extras: dict | None, pnl_est: float | None) -> dict:
@@ -225,9 +231,9 @@ def notify_trade_opened(
     price_tg  = f" @ <code>{price:.4f}</code>" if price is not None else ""
     ids_tg    = f"\n<code>{', '.join(o[:16] for o in order_ids[:3])}</code>" if order_ids else ""
     _telegram(
-        f"🟢 <b>OPENED {direction}</b> — {bot}\n"
+        f"🟢 <b>OPENED {_he(direction)}</b> — {_he(bot)}\n"
         f"${amount_usd:.2f}{price_tg}\n"
-        f"{market[:120]}{ids_tg}"
+        f"{_he(market[:120])}{ids_tg}"
     )
 
 
@@ -268,7 +274,7 @@ def notify_event(
     # Telegram
     tg_icon = {"info": "ℹ️", "warning": "⚠️", "error": "🚨"}.get(level, "ℹ️")
     _telegram(
-        f"{tg_icon} <b>[{source}]</b> {title}\n{body[:180]}"
+        f"{tg_icon} <b>[{_he(source)}]</b> {_he(title)}\n{_he(body[:180])}"
     )
 
 
@@ -315,9 +321,9 @@ def notify_trade_closed(
     pnl_tg = f"  P&L ≈<b>${pnl_est:+.4f}</b>" if pnl_est is not None else ""
     ids_tg = f"\n<code>{', '.join(o[:16] for o in order_ids[:3])}</code>" if order_ids else ""
     _telegram(
-        f"🔴 <b>CLOSED {direction}</b> — {bot}\n"
+        f"🔴 <b>CLOSED {_he(direction)}</b> — {_he(bot)}\n"
         f"${amount_usd:.2f}{pnl_tg}\n"
-        f"{market[:120]}{ids_tg}"
+        f"{_he(market[:120])}{ids_tg}"
     )
 
 
