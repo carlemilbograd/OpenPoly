@@ -65,6 +65,10 @@ COMMANDS = {
 
     # Notifications
     "notify":       ("notifier.py",              "Bot trade notifications  [--limit N] [--since 2h] [--bot NAME] [--clear]"),
+
+    # All-in-one
+    "master":       ("master_bot.py",             "Master supervisor — all strategies  --start --budget N | --status | --stop | --pnl"),
+    "setup":        ("setup_all.py",              "One-command automated setup  [--yes] [--dry-run] [--skip-creds]"),
 }
 
 # ── aliases ───────────────────────────────────────────────────────────────────
@@ -109,6 +113,17 @@ ALIASES = {
     "notifications": "notify",
     "trades":       "notify",
     "alerts-bot":   "notify",
+
+    # master aliases
+    "bot":          "master",
+    "master-bot":   "master",
+    "supervisor":   "master",
+    "run-all":      "master",
+
+    # setup aliases
+    "init":         "setup",
+    "install":      "setup",
+    "configure":    "setup",
 }
 
 
@@ -135,6 +150,7 @@ def _print_help():
         ("Automation", ["auto-arb", "schedule", "news", "mm", "signals", "omni"]),
         ("Evaluation & Safety", ["backtest", "eval", "risk", "db", "prob", "geoblock"]),
         ("Notifications", ["notify"]),
+        ("All-in-one", ["master", "setup"]),
     ]
 
     for section, cmds in sections:

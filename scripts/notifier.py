@@ -166,6 +166,41 @@ def notify_trade_opened(
     )
 
 
+def notify_event(
+    source: str,
+    title: str,
+    body: str,
+    level: str = "info",   # "info" | "warning" | "error"
+    extras: dict | None = None,
+):
+    """
+    General-purpose lifecycle event notification (bot started, crashed, heartbeat…).
+    Appended to the same trade_notifications.json under event="system_event".
+    """
+    rec = {
+        "id":      str(uuid.uuid4())[:12],
+        "ts":      _now(),
+        "event":   "system_event",
+        "level":   level,
+        "source":  source,
+        "title":   title,
+        "body":    body[:200],
+        **(extras or {}),
+    }
+    records = _load()
+    records.append(rec)
+    _save(records)
+
+    icon = {"info": "ℹ️", "warning": "⚠️", "error": "🚨"}.get(level, "ℹ️")
+    _print(f"{icon}  [{source}]  {title}  — {body[:80]}")
+
+    _desktop(
+        title=f"OpenPoly — {title}",
+        subtitle=source,
+        body=body[:80],
+    )
+
+
 def notify_trade_closed(
     bot: str,
     market: str,

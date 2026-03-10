@@ -2,6 +2,10 @@
 """
 omni_strategy.py — All-in-one strategy orchestrator for OpenPoly.
 
+> **Tip:** For production use, prefer `master_bot.py` (`poly master`).
+> It adds automatic crash restarts, heartbeat notifications, a live strategy
+> registry (one place to add new strategies), and full OpenClaw integration.
+
 Runs ALL strategies simultaneously in background subprocesses and reports
 combined P&L, activity, and health across all running strategies.
 

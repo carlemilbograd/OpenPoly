@@ -28,6 +28,8 @@ Polymarket APIs. It can:
 10. **Market Monitor** — automated scanning for price moves, arb gaps, volume spikes, and 50/50 opportunities
 11. **Geo-block Check** — verify whether your current IP is permitted to trade on Polymarket (official API, no credentials required)
 12. **Trade Notifications** — all auto bots push open/close events with macOS desktop banners and a persistent JSON log readable by the agent
+13. **Master Supervisor** — `master_bot.py` runs all strategies as supervised subprocesses with auto crash-restart, heartbeat notifications, and a single STRATEGY_REGISTRY to register new strategies
+14. **Automated Setup** — `setup_all.py` is an idempotent 8-step wizard that configures the entire skill from scratch in one command
 
 ---
 
@@ -988,7 +990,99 @@ poly notify --clear                # wipe history
 
 ---
 
-## Error Handling
+## 32. master_bot.py — Master Supervisor
+
+**Purpose**: True all-in-one supervised runner. Spawns every registered strategy as a subprocess, monitors health, auto-restarts crashes, sends heartbeat + lifecycle notifications to OpenClaw, and honours the kill switch.
+
+Prefer this over `omni_strategy.py` for production use.
+
+**Commands**:
+```bash
+poly master --start --budget 1000           # start all strategies splitting $1000
+poly master --start --budget 500 --dry-run  # dry run (no real orders)
+poly master --start --only arb,mm,news      # subset via alias names
+poly master --once                          # run one cycle of each, then exit
+poly master --status                        # show each strategy's process state
+poly master --pnl                           # combined P&L across all strategies
+poly master --stop                          # gracefully stop all subprocesses
+poly master --list-strategies              # list registry with aliases + budget %
+poly master --heartbeat 60                  # custom heartbeat interval (minutes)
+```
+
+**Aliases**: `poly bot` · `poly supervisor` · `poly run-all` · `poly master-bot`
+
+**STRATEGY_REGISTRY** (single source of truth — edit when adding a new strategy):
+Location: `scripts/master_bot.py`, top-level `STRATEGY_REGISTRY` dict.
+Each entry defines: `script`, `loop_flags`, `once_flags`, `budget_flag`, `budget_pct`, `alias`, `description`.
+
+To add a new strategy:
+1. Open `scripts/master_bot.py`
+2. Add a new key to `STRATEGY_REGISTRY` following the template in the `# Add new strategies below this line` comment
+3. Set `budget_pct` so all entries total ≤ 100
+4. `master_bot` will automatically supervise it, restart on crash, include it in `--status` and `--pnl`
+
+**Current registry**:
+| Name | Alias | Budget % | Description |
+|---|---|---|---|
+| `auto_arbitrage` | `arb` | 30% | YES/NO same-market arbitrage |
+| `correlation_arbitrage` | `corr` | 20% | Cross-market correlated-pair arb |
+| `market_maker` | `mm` | 20% | Bid/ask spread capture |
+| `news_trader` | `news` | 15% | News-driven momentum trades |
+| `ai_automation` | `ai` | 10% | AI/heuristic signal trading |
+| `auto_monitor` | `mon`, `monitor` | 0% | Market anomaly alerts (no trading) |
+
+**Restart behaviour**: up to `MAX_RESTARTS=5` per strategy with `RESTART_DELAY=10s`. After 5 failures the strategy is abandoned and an OpenClaw notification is sent.
+
+**Heartbeat**: every `HEARTBEAT_MIN=30` minutes (overridable with `--heartbeat N`) a system_event notification is pushed with live status of all strategies.
+
+**Lifecycle notifications** (via `notify_event`):
+- `master_bot started` — all strategies spawned
+- `strategy restarted` — crash detected, re-spawning
+- `strategy gave up` — MAX_RESTARTS exceeded
+- `heartbeat` — periodic status ping
+- `master_bot stopped` — graceful shutdown
+
+**State file**: `master_state.json` in the skill root.
+
+**When to use**:
+- User asks "start all my bots", "run everything", "launch all strategies"
+- User wants the system to self-heal if a strategy crashes
+- User wants to be notified when the system is running or a strategy fails
+
+---
+
+## 33. setup_all.py — Automated Setup Wizard
+
+**Purpose**: One-command idempotent setup. Configures the entire skill from scratch or verifies an existing setup. Safe to re-run at any time — already-correct steps are skipped with ✔.
+
+**Commands**:
+```bash
+poly setup                       # interactive (prompts for defaults)
+poly setup --yes                 # non-interactive, accept all defaults
+poly setup --dry-run --yes       # preview only — no files written, no network calls
+poly setup --skip-creds          # skip API credential derivation (step 4)
+```
+
+**Aliases**: `poly init` · `poly install` · `poly configure`
+
+**8 steps**:
+| # | Step | What it does |
+|---|---|---|
+| 1 | Dependencies | Checks/installs `py-clob-client`, `requests`, `python-dotenv` |
+| 2 | .env file | Copies `.env.example` → `.env` if missing |
+| 3 | Private key | Validates `POLYMARKET_PRIVATE_KEY` is set and not a placeholder |
+| 4 | API credentials | Runs `setup_credentials.py` if API key not yet derived |
+| 5 | Risk guard defaults | Sets `max_daily_loss=5%` and `max_position_pct=20%` |
+| 6 | Scheduler jobs | Registers 8 default cron-style jobs if not already present |
+| 7 | Database | Runs `db.py migrate` to create/update `openpoly.db` |
+| 8 | Geo-block | Warns if current IP is in a restricted region |
+
+**When to use**:
+- User is setting up the skill for the first time
+- User asks "set everything up", "configure the bot", "initialize the system"
+- After a fresh clone / new machine setup
+
+---
 
 - If commands fail with `ModuleNotFoundError`: run `pip install py-clob-client requests python-dotenv web3 --break-system-packages`
 - If `401 Unauthorized`: credentials are wrong or expired — re-derive with `poly setup`

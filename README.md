@@ -59,6 +59,8 @@ No intermediary. No dashboard. Just your agent and a full trading toolkit.
 | **On-chain** | Redeem resolved winning positions via Polygon CTF contract |
 | **Geo-block check** | Official IP-based check — returns country, region, blocked / close-only status |
 | **Notifications** | All auto bots push trade open/close events — macOS banners + persistent JSON log |
+| **Master bot** | Supervised all-in-one runner — crash auto-restart, heartbeat alerts, `--only` subset, kill-switch aware |
+| **Automated setup** | One-command idempotent setup wizard — deps, .env, key validation, API creds, risk guard, scheduler, DB |
 | **Security** | API key entropy check at startup, secret masking in all error output, kill switch wired into every auto bot |
 | **Tests & CI** | 100 pytest tests across 5 test files, GitHub Actions CI on every push |
 
@@ -136,7 +138,9 @@ These are real examples of what you can say. The agent picks the right script.
 | Trade on latest news | `news_trader.py --once` |
 | Make markets / earn spread | `market_maker.py --scan-targets` |
 | Generate AI signals | `ai_automation.py --once --signals` |
-| Run all strategies with $500 | `omni_strategy.py --start --budget 500` |
+| Run all strategies with $500 | `master_bot.py --start --budget 500` |
+| Run only arb + market maker | `master_bot.py --start --only arb,mm --budget 300` |
+| First-time setup (automated) | `setup_all.py --yes` |
 | Redeem resolved winnings | `redeem.py --dry-run` |
 | Schedule auto arb every 15 min | `scheduler.py add` + `scheduler.py start` |
 
@@ -491,7 +495,26 @@ Runs momentum, volume, and mean-reversion analysis across Polymarket's top marke
 </details>
 
 <details>
-<summary><b>omni_strategy.py</b> — Run every strategy at once</summary>
+<summary><b>master_bot.py</b> — Supervised all-in-one runner (recommended)</summary>
+
+```bash
+python scripts/master_bot.py --start --budget 1000
+python scripts/master_bot.py --start --budget 1000 --dry-run
+python scripts/master_bot.py --start --only arb,mm,news --budget 500
+python scripts/master_bot.py --once
+python scripts/master_bot.py --status
+python scripts/master_bot.py --pnl
+python scripts/master_bot.py --stop
+python scripts/master_bot.py --list-strategies
+```
+
+Default budget split: `arb:30%` · `corr:20%` · `mm:20%` · `news:15%` · `ai:10%` · `monitor:0%`
+
+Features over omni_strategy: crash auto-restart (up to 5×), heartbeat notifications every 30 min, OpenClaw lifecycle alerts, `--only` subset mode, STRATEGY_REGISTRY pattern (single place to add new strategies).
+</details>
+
+<details>
+<summary><b>omni_strategy.py</b> — Run every strategy at once (legacy)</summary>
 
 ```bash
 python scripts/omni_strategy.py --start --budget 1000
@@ -504,6 +527,21 @@ python scripts/omni_strategy.py --stop
 ```
 
 Default budget split: `arb:30%` · `corr:25%` · `mm:25%` · `news:10%` · `ai:10%`
+
+> Prefer `master_bot.py` for production — it adds supervised crash-restart, heartbeat alerts and STRATEGY_REGISTRY.
+</details>
+
+<details>
+<summary><b>setup_all.py</b> — Automated first-time setup wizard</summary>
+
+```bash
+python scripts/setup_all.py          # interactive
+python scripts/setup_all.py --yes    # non-interactive (accept all defaults)
+python scripts/setup_all.py --dry-run --yes  # preview only, no changes
+python scripts/setup_all.py --skip-creds     # skip API credential derivation
+```
+
+8 idempotent steps: dependencies · .env file · private key validation · API credentials · risk guard defaults · scheduler default jobs · database migration · geo-block check. Safe to re-run at any time.
 </details>
 
 ---
@@ -559,7 +597,8 @@ Alert log: `logs/monitor_alerts.json`.
 | `news_trader.py` | 4-layer news pipeline | `--once` |
 | `market_maker.py` | Post bid/ask, earn spread | `--once` |
 | `ai_automation.py` | Signal generation | `--once` |
-| `omni_strategy.py` | All strategies | `--once` |
+| `master_bot.py` | All strategies (supervised) | `--once` |
+| `omni_strategy.py` | All strategies (legacy) | `--once` |
 | `exposure.py` | Portfolio risk check | *(runs and exits)* |
 | `watchlist.py check` | Fire price alerts | *(runs and exits)* |
 
@@ -757,7 +796,9 @@ OpenPoly/
     ├── risk_guard.py          # daily loss limit + kill switch
     ├── db.py                  # unified SQLite data layer
     ├── prob_model.py          # calibrated fair-probability + Kelly sizing
-    └── notifier.py            # trade open/close notifications → desktop + JSON log
+    ├── notifier.py            # trade open/close + lifecycle notifications → desktop + JSON log
+    ├── master_bot.py          # supervised all-in-one runner — crash-restart, heartbeat, STRATEGY_REGISTRY
+    └── setup_all.py           # idempotent 8-step setup wizard
 ```
 
 ---
