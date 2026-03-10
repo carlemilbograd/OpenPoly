@@ -27,6 +27,7 @@ Polymarket APIs. It can:
 9. **Automation Scheduler** — register any script to run on any interval, start/stop background daemon
 10. **Market Monitor** — automated scanning for price moves, arb gaps, volume spikes, and 50/50 opportunities
 11. **Geo-block Check** — verify whether your current IP is permitted to trade on Polymarket (official API, no credentials required)
+12. **Trade Notifications** — all auto bots push open/close events with macOS desktop banners and a persistent JSON log readable by the agent
 
 ---
 
@@ -926,6 +927,64 @@ poly geoblock --json   # machine-readable {blocked, ip, country, region}
 
 **Blocked countries** (partial list): AU, BE, DE, FR, GB, IR, IT, NL, RU, US and others.
 Full list: https://docs.polymarket.com/api-reference/geoblock
+
+---
+
+## 31. notifier.py — Trade Notifications
+
+**Purpose**: Central notification hub called by every auto bot when it opens or closes a trade.
+Fires a macOS Notification Center banner, appends a structured record to `logs/trade_notifications.json`,
+and prints a `🔔` summary line to stdout / log files.
+All hooks are wrapped in `try/except` — a notification failure will never crash a live bot.
+
+**Bots that push notifications**:
+| Bot | Events pushed |
+|---|---|
+| `auto_arbitrage` | Trade opened (arb legs placed) |
+| `news_trader` | Trade opened (order placed) |
+| `ai_automation` | Trade opened (signal executed) |
+| `market_maker` | Trade opened (quotes placed) + trade closed (SELL fill detected with P&L) |
+| `correlation_arbitrage` | Trade opened (hedge legs placed) |
+
+**When to use**:
+- When user asks "what trades have the bots made?", "show recent bot activity", "did any bots trade?"
+- To review trade history from automated strategies
+- To check P&L from market_maker fills
+
+**Commands**:
+```bash
+poly notify                        # last 20 notifications
+poly notify --limit 50             # more history
+poly notify --since 2h             # last 2 hours (also: 30m, 1d)
+poly notify --bot auto_arbitrage   # filter by bot
+poly notify --event trade_opened   # filter by event type
+poly notify --json                 # raw JSON output
+poly notify --clear                # wipe history
+```
+
+**Aliases**: `poly notifs` · `poly notifications` · `poly trades`
+
+**Notification record schema**:
+```json
+{
+  "id":         "a1b2c3d4e5f6",
+  "ts":         "2026-03-10T09:30:00+00:00",
+  "event":      "trade_opened",
+  "bot":        "auto_arbitrage",
+  "market":     "Will the Fed cut rates in March?",
+  "market_id":  "0xabc...",
+  "direction":  "ARB",
+  "amount_usd": 50.0,
+  "price":      null,
+  "pnl_est":    null,
+  "order_ids":  ["order-aaa", "order-bbb"],
+  "legs":       2,
+  "gap_pct":    1.5,
+  "profit_est_usd": 0.23
+}
+```
+
+**Log file**: `logs/trade_notifications.json` (capped at 2000 records)
 
 ---
 

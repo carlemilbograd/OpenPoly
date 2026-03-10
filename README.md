@@ -58,6 +58,7 @@ No intermediary. No dashboard. Just your agent and a full trading toolkit.
 | **Prob model** | Calibrated fair-probability engine — Bayesian prior + signal updates + Kelly sizing |
 | **On-chain** | Redeem resolved winning positions via Polygon CTF contract |
 | **Geo-block check** | Official IP-based check — returns country, region, blocked / close-only status |
+| **Notifications** | All auto bots push trade open/close events — macOS banners + persistent JSON log |
 | **Security** | API key entropy check at startup, secret masking in all error output, kill switch wired into every auto bot |
 | **Tests & CI** | 100 pytest tests across 5 test files, GitHub Actions CI on every push |
 
@@ -204,6 +205,29 @@ python scripts/trade.py --token-id TOKEN_ID --side SELL --price 0.70 --size 5 \
 | Order signing | Key format errors (pure local crypto, no POST) |
 
 Always shows an order preview and asks for confirmation before submitting a real order.
+</details>
+
+<details>
+<summary><b>notifier.py</b> — Bot trade notifications</summary>
+
+```bash
+poly notify                        # last 20 notifications
+poly notify --limit 50
+poly notify --since 2h             # last 2 hours
+poly notify --bot auto_arbitrage   # filter by bot
+poly notify --event trade_opened   # filter: trade_opened | trade_closed
+poly notify --json                 # raw JSON
+poly notify --clear                # wipe history
+```
+
+All auto bots (`auto_arbitrage`, `news_trader`, `ai_automation`, `market_maker`,
+`correlation_arbitrage`) call `notify_trade_opened` / `notify_trade_closed` after
+every real order. Each event fires a macOS Notification Center banner and appends
+a structured record to `logs/trade_notifications.json`.
+
+Notification hooks are `try/except`-wrapped — they never crash a live bot.
+
+Aliases: `poly notifs` · `poly notifications` · `poly trades`
 </details>
 
 <details>
@@ -732,7 +756,8 @@ OpenPoly/
     ├── eval.py                # post-resolution hit-rate scoring
     ├── risk_guard.py          # daily loss limit + kill switch
     ├── db.py                  # unified SQLite data layer
-    └── prob_model.py          # calibrated fair-probability + Kelly sizing
+    ├── prob_model.py          # calibrated fair-probability + Kelly sizing
+    └── notifier.py            # trade open/close notifications → desktop + JSON log
 ```
 
 ---
