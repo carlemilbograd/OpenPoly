@@ -141,6 +141,138 @@ def _load_env_var(key: str) -> str:
     return ""
 
 
+def _set_env_var(key: str, value: str) -> None:
+    """Update an existing KEY= line in .env, or append it if missing."""
+    if not ENV_FILE.exists():
+        return
+    lines = ENV_FILE.read_text().splitlines()
+    found = False
+    new_lines = []
+    for line in lines:
+        if line.strip().startswith(f"{key}="):
+            new_lines.append(f"{key}={value}")
+            found = True
+        else:
+            new_lines.append(line)
+    if not found:
+        new_lines.append(f"{key}={value}")
+    ENV_FILE.write_text("\n".join(new_lines) + "\n")
+
+
+def step_env_vars(dry: bool, yes: bool) -> None:
+    """Interactive walk-through of every .env credential — prompts for anything unset."""
+    head("Step 2b \u2014 Configure credentials")
+
+    # \u2500\u2500 signature type \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n    current_sig = _load_env_var("POLYMARKET_SIGNATURE_TYPE") or "0"
+    print()
+    print(f"  How did you create your Polymarket account?")
+    print(f"    0  MetaMask / hardware wallet  (EOA) \u2014 export key from MetaMask")
+    print(f"    1  Email/Google via Magic Link  (POLY_PROXY) \u2014 export from polymarket.com \u2192 Settings")
+    print(f"    2  Email/Google GNOSIS_SAFE     (most common) \u2014 export from polymarket.com \u2192 Settings")
+    new_sig = ask("Signature type (0 / 1 / 2)", current_sig, yes)
+    if new_sig not in ("0", "1", "2"):
+        warn(f"Unknown type \u2018{new_sig}\u2019 \u2014 defaulting to 0")
+        new_sig = "0"
+
+    # \u2500\u2500 private key \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n    current_key = _load_env_var("POLYMARKET_PRIVATE_KEY")
+    _placeholders = {"", "0xYOUR_PRIVATE_KEY_HERE", "0xYOUR_KEY"}
+    if current_key not in _placeholders:
+        masked = current_key[:6] + "****" + current_key[-4:]
+        ok(f"POLYMARKET_PRIVATE_KEY already set ({masked})")
+        new_key = current_key
+    else:
+        print(f"\n  {_Y}POLYMARKET_PRIVATE_KEY is required.{_N}")
+        print(f"  MetaMask: Account menu \u2192 Account details \u2192 Export private key")
+        print(f"  Email/Google wallet: polymarket.com \u2192 Settings \u2192 Export Key")
+        if yes:
+            warn("Cannot auto-fill private key \u2014 edit .env manually, then re-run setup.")
+            new_key = current_key
+        else:
+            new_key = input("  Enter your private key (0x\u2026): ").strip()
+
+    # \u2500\u2500 funder address (types 1 and 2) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n    current_funder = _load_env_var("POLYMARKET_FUNDER_ADDRESS")
+    new_funder = current_funder
+    if new_sig in ("1", "2"):
+        if current_funder:
+            ok(f"POLYMARKET_FUNDER_ADDRESS already set ({current_funder[:12]}\u2026)")
+        else:
+            print(f"\n  Signature type {new_sig} requires POLYMARKET_FUNDER_ADDRESS.")
+            print(f"  Find it on polymarket.com \u2192 your profile \u2014 it\u2019s the wallet address shown.")
+            if yes:
+                warn("Cannot auto-fill funder address \u2014 edit .env manually, then re-run setup.")
+            else:
+                new_funder = input("  Enter funder address (0x\u2026): ").strip()
+
+    # \u2500\u2500 optional variables \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    def _prompt_optional(key: str, description: str, hint: str = "") -> str:
+        """Show a prompt for an optional variable; skip if already set or in --yes mode."""
+        current = _load_env_var(key)
+        if current:
+            ok(f"{key} already set")
+            return current
+        print(f"\n  {_B}[optional]{_N}  {description}")
+        if hint:
+            print(f"  {hint}")
+        if yes:
+            info(f"Skipping {key} (--yes mode \u2014 set it manually in .env when ready)")
+            return ""
+        return input(f"  {key}: ").strip()
+
+    newsapi_key = _prompt_optional(
+        "NEWSAPI_KEY",
+        "NewsAPI.org key \u2014 enriches the news pipeline (free tier, 100 req/day).",
+        "Register at https://newsapi.org/register then paste the key here.",
+    )
+    polygon_rpc = _prompt_optional(
+        "POLYGON_RPC_URL",
+        "Polygon RPC URL \u2014 only needed for redeem.py to claim on-chain winnings.",
+        "Press Enter to use the free public default (https://polygon-rpc.com).",
+    )
+    proxy_url = _prompt_optional(
+        "POLYMARKET_PROXY",
+        "Proxy URL \u2014 only needed if your IP is geo-blocked from Polymarket.",
+        "Example (reverse SSH SOCKS5 tunnel): socks5h://127.0.0.1:1080",
+    )
+    tg_token = _prompt_optional(
+        "TELEGRAM_BOT_TOKEN",
+        "Telegram bot token \u2014 routes all trade alerts to your Telegram chat.",
+        "Create one: @BotFather on Telegram \u2192 /newbot \u2192 copy the token.",
+    )
+    tg_chat = ""
+    if tg_token:
+        tg_chat = _prompt_optional(
+            "TELEGRAM_CHAT_ID",
+            "Your Telegram chat or group ID.",
+            "Message your bot once, then visit:\n"
+            "  https://api.telegram.org/bot<TOKEN>/getUpdates \u2014 copy result[0].message.chat.id",
+        )
+
+    if dry:
+        warn("[DRY-RUN] Would write configured credentials to .env")
+        return
+
+    # \u2500\u2500 write all changes \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    changes: dict[str, str] = {"POLYMARKET_SIGNATURE_TYPE": new_sig}
+    if new_key and new_key not in _placeholders:
+        changes["POLYMARKET_PRIVATE_KEY"] = new_key
+    if new_funder:
+        changes["POLYMARKET_FUNDER_ADDRESS"] = new_funder
+    if newsapi_key:
+        changes["NEWSAPI_KEY"] = newsapi_key
+    if polygon_rpc:
+        changes["POLYGON_RPC_URL"] = polygon_rpc
+    if proxy_url:
+        changes["POLYMARKET_PROXY"] = proxy_url
+    if tg_token:
+        changes["TELEGRAM_BOT_TOKEN"] = tg_token
+    if tg_chat:
+        changes["TELEGRAM_CHAT_ID"] = tg_chat
+
+    for k, v in changes.items():
+        _set_env_var(k, v)
+    ok(f"Saved {len(changes)} variable(s) to .env")
+
+
 def step_private_key() -> bool:
     head("Step 3 — Private key validation")
     key = _load_env_var("POLYMARKET_PRIVATE_KEY")
@@ -364,6 +496,8 @@ def main():
     if not env_ready and not dry:
         step_summary(dry)
         return
+
+    step_env_vars(dry, yes)
 
     key_ok = step_private_key()
     if not key_ok and not dry:

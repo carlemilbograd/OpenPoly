@@ -31,12 +31,12 @@ Polymarket APIs. It can:
 13. **Master Supervisor** — `master_bot.py` runs all strategies as supervised subprocesses with auto crash-restart, heartbeat notifications, and a single STRATEGY_REGISTRY to register new strategies
 14. **Automated Setup** — `setup_all.py` is an idempotent 8-step wizard that configures the entire skill from scratch in one command
 15. **Emergency Stop** — `stopall.py` kills every running bot (3-layer: state-file PIDs + scheduler PID file + pgrep zombie scan) and activates the kill switch
-15. **Input Guards** — `_guards.py` enforces hard minimum order sizes and API rate limits across all bots; mis-configured values are caught at startup before any order is placed
-16. **Time Decay Arbitrage** — `time_decay.py` buys NO (FADE) when a market won't resolve YES before deadline, or buys YES (RUSH) when a near-certain outcome is still underpriced
-17. **Logical Constraint Arb** — `logical_arb.py` detects implication and mutex violations across related markets (e.g. P(Trump wins primary) > P(Republican wins presidency)) and trades both legs
-18. **Resolution Arbitrage** — `resolution_arb.py` captures guaranteed profit when YES+NO > 1 in markets within days of settlement
-19. **News Latency Trading** — `news_latency.py` targets < 10 s from headline to order using an RSS-only path and a pre-cached keyword→market map
-20. **Strategy Evaluator** — `strategy_evaluator.py` measures ROI/win-rate/Sharpe per strategy and can auto-disable underperformers in `master_state.json`
+16. **Input Guards** — `_guards.py` enforces hard minimum order sizes and API rate limits across all bots; mis-configured values are caught at startup before any order is placed
+17. **Time Decay Arbitrage** — `time_decay.py` buys NO (FADE) when a market won't resolve YES before deadline, or buys YES (RUSH) when a near-certain outcome is still underpriced
+18. **Logical Constraint Arb** — `logical_arb.py` detects implication and mutex violations across related markets (e.g. P(Trump wins primary) > P(Republican wins presidency)) and trades both legs
+19. **Resolution Arbitrage** — `resolution_arb.py` captures guaranteed profit when YES+NO > 1 in markets within days of settlement
+20. **News Latency Trading** — `news_latency.py` targets < 10 s from headline to order using an RSS-only path and a pre-cached keyword→market map
+21. **Strategy Evaluator** — `strategy_evaluator.py` measures ROI/win-rate/Sharpe per strategy and can auto-disable underperformers in `master_state.json`
 
 ---
 
@@ -1109,6 +1109,7 @@ poly setup --skip-creds          # skip API credential derivation (step 4)
 |---|---|---|
 | 1 | Dependencies | Checks/installs `py-clob-client`, `requests`, `python-dotenv` |
 | 2 | .env file | Copies `.env.example` → `.env` if missing |
+| 2b | Env variables | Interactively sets private key, signature type, Telegram, NewsAPI key, proxy, and Polygon RPC |
 | 3 | Private key | Validates `POLYMARKET_PRIVATE_KEY` is set and not a placeholder |
 | 4 | API credentials | Runs `setup_credentials.py` if API key not yet derived |
 | 5 | Risk guard defaults | Sets `max_daily_loss=5%` and `max_position_pct=20%` |

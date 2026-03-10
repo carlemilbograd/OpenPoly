@@ -61,21 +61,19 @@ git clone https://github.com/carlemilbograd/OpenPoly.git \
 cd ~/.openclaw/workspace/skills/polymarket
 pip install -r requirements.txt
 
-# 3 — Configure (the only manual step)
-cp .env.example .env
-#   → open .env, set POLYMARKET_PRIVATE_KEY=0xYOUR_KEY
+# 3 — Run the interactive setup wizard
+#   Walks you through: private key · signature type · API credential derivation
+#   · Telegram notifications · NewsAPI key · proxy · risk limits · database
+python scripts/setup_all.py
 
-# 4 — Derive API credentials automatically
-python scripts/setup_credentials.py
-
-# 5 — (Optional) Full automated setup wizard
-python scripts/setup_all.py --yes
-
-# 6 — Reload OpenClaw skills, then just talk to your agent ✓
+# 4 — Reload OpenClaw skills, then just talk to your agent ✓
 ```
 
 > [!TIP]
-> Not sure which signature type you need? See the [Credentials](#credentials) section — most email/Google accounts use type `2`.
+> The wizard asks for your private key, signature type (0 = MetaMask, 2 = email/Google), optional Telegram and NewsAPI keys, and derives your API credentials automatically. Run `setup_all.py --yes` for a non-interactive / scripted setup.
+
+> [!NOTE]
+> **Manual alternative** — skip the wizard and edit `.env` directly: `cp .env.example .env && nano .env`, then run `python scripts/setup_credentials.py`. See the [Credentials](#credentials) section for the full list of variables.
 
 ---
 
