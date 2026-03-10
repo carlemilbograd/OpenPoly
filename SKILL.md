@@ -31,6 +31,11 @@ Polymarket APIs. It can:
 13. **Master Supervisor** — `master_bot.py` runs all strategies as supervised subprocesses with auto crash-restart, heartbeat notifications, and a single STRATEGY_REGISTRY to register new strategies
 14. **Automated Setup** — `setup_all.py` is an idempotent 8-step wizard that configures the entire skill from scratch in one command
 15. **Input Guards** — `_guards.py` enforces hard minimum order sizes and API rate limits across all bots; mis-configured values are caught at startup before any order is placed
+16. **Time Decay Arbitrage** — `time_decay.py` buys NO (FADE) when a market won't resolve YES before deadline, or buys YES (RUSH) when a near-certain outcome is still underpriced
+17. **Logical Constraint Arb** — `logical_arb.py` detects implication and mutex violations across related markets (e.g. P(Trump wins primary) > P(Republican wins presidency)) and trades both legs
+18. **Resolution Arbitrage** — `resolution_arb.py` captures guaranteed profit when YES+NO > 1 in markets within days of settlement
+19. **News Latency Trading** — `news_latency.py` targets < 10 s from headline to order using an RSS-only path and a pre-cached keyword→market map
+20. **Strategy Evaluator** — `strategy_evaluator.py` measures ROI/win-rate/Sharpe per strategy and can auto-disable underperformers in `master_state.json`
 
 ---
 
@@ -1132,7 +1137,188 @@ If `total_budget × strategy_budget_pct% < $1.00`, master_bot prints a warning a
 
 ---
 
-## Error Handling
+## 35. time_decay.py — Resolution-Timing Edge
+
+**Purpose**: Trade mispricings caused by time running out on prediction markets.
+
+**Location**: `scripts/time_decay.py`
+
+**Key constants**: `DEFAULT_MAX_DAYS=7`, `MIN_EDGE=0.04`, `DECAY_PER_DAY=0.30`, `FEE=0.02`
+
+**Core model**:
+```python
+def _fair_no_price(yes_price, days):
+    fair_yes = yes_price * (1 - DECAY_PER_DAY) ** days
+    return round(1.0 - fair_yes, 4)
+```
+
+**Sub-strategies**:
+- **FADE** — buy NO when `fair_no - live_no - FEE >= min_edge`; markets still priced as if the event *might* occur with days left
+- **RUSH** — buy YES when `yes_price >= 0.70` but still underpriced relative to residual time probability
+
+**CLI**:
+```bash
+python scripts/time_decay.py --scan [--max-days N] [--min-edge X] [--top N] [--tag KEYWORD]
+python scripts/time_decay.py --scan --execute --budget 25 [--dry-run]
+python scripts/time_decay.py --once
+python scripts/time_decay.py --loop --interval 300
+python scripts/time_decay.py --status
+```
+
+**State file**: `time_decay_state.json` — `runs`, `trades_executed`, `total_spent`, `total_profit_est`, `history`
+
+**Notifications**: `notify_trade_opened` with `extras={"type": "FADE"|"RUSH", "days_remaining": N, "edge": N}`
+
+**STRATEGY_REGISTRY key**: `"time_decay"`, alias `["td", "decay"]`, `budget_pct=15`
+
+---
+
+## 36. logical_arb.py — Logical Constraint Violation Arbitrage
+
+**Purpose**: Enforce strict mathematical bounds between logically related markets.
+
+**Location**: `scripts/logical_arb.py`
+
+**Key constants**: `DEFAULT_MIN_EDGE=0.03`, `DEFAULT_LIMIT=250`, `MIN_VOLUME_24H=300`
+
+**LOGIC_GROUPS** (7 built-in):
+| Group | Type | Rule |
+|---|---|---|
+| trump→republican | IMPLICATION | P(Trump wins primary) ≤ P(Republican wins presidency) |
+| dem_candidate→democrat | IMPLICATION | P(specific Dem wins primary) ≤ P(Democrat wins WH) |
+| wins_popular_vote→wins_presidency | IMPLICATION | P(wins popular vote) ≥ P(wins EC) |
+| btc_spot_etf→btc_etf | IMPLICATION | P(spot ETF) ≤ P(any ETF) |
+| fed_mar→fed_q1 | IMPLICATION | P(March cut) ≤ P(Q1 cut) |
+| nba_champ_team | MUTEX_HINT | sum of all team win probs ≤ 1 (per pair) |
+| nfl_champ_team | MUTEX_HINT | same for NFL |
+
+**Execution**: `execute_violation()` places 2 legs with budget split 50/50.
+
+**CLI**:
+```bash
+python scripts/logical_arb.py --scan [--min-edge X] [--limit N] [--top N]
+python scripts/logical_arb.py --scan --execute --budget 50 [--dry-run]
+python scripts/logical_arb.py --once
+python scripts/logical_arb.py --status
+```
+
+**State file**: `logical_arb_state.json`
+
+**STRATEGY_REGISTRY key**: `"logical_arb"`, alias `["la", "logic"]`, `budget_pct=10`
+
+---
+
+## 37. resolution_arb.py — Near-Settlement Guaranteed-Profit Arbitrage
+
+**Purpose**: Capture risk-free profit when YES + NO prices sum to more than 1 in markets near their resolution date.
+
+**Location**: `scripts/resolution_arb.py`
+
+**Key constants**: `DEFAULT_MAX_DAYS=3`, `DEFAULT_MIN_EDGE=0.01`, `MIN_VOLUME_24H=100`
+
+**Opportunity types**:
+| Type | Condition | Action |
+|---|---|---|
+| `BOTH_SIDES` | YES + NO > 1.0 + FEE + min_edge | Sell both sides (buy NO at 1-yes_price and vice versa) |
+| `EXCESS_NO` | YES ≥ 0.93 and NO ≥ 0.04 | Buy YES (NO is mispriced high near certain outcome) |
+| `EXCESS_YES` | NO ≥ 0.93 and YES ≥ 0.04 | Buy NO (YES is mispriced high) |
+
+**CLI**:
+```bash
+python scripts/resolution_arb.py --scan [--max-days N] [--min-edge X] [--limit N]
+python scripts/resolution_arb.py --scan --execute --budget 75
+python scripts/resolution_arb.py --once
+python scripts/resolution_arb.py --include-anytime   # also check event-triggered markets
+python scripts/resolution_arb.py --status
+```
+
+**State file**: `resolution_arb_state.json`
+
+**STRATEGY_REGISTRY key**: `"resolution_arb"`, alias `["res", "resarb"]`, `budget_pct=5`
+
+---
+
+## 38. news_latency.py — Sub-10-Second RSS News Trading
+
+**Purpose**: Trade on breaking headlines before price discovery catches up — targets < 10 s from news to order.
+
+**Location**: `scripts/news_latency.py`
+
+**Key constants**: `POLL_INTERVAL=10` (hard min), `MAX_STORY_AGE=30`, `MIN_EDGE=0.05`, `CACHE_TTL=300`
+
+**Speed optimisations vs `news_trader`**:
+- RSS-only (no GDELT/NewsAPI call overhead)
+- Pre-cached `news_latency_map.json`: keyword→token_id, rebuilt every `CACHE_TTL` seconds
+- No clustering or full impact scoring pass
+- `MIN_EDGE=0.05` buffer compensates for removed slippage gate
+
+**`build_keyword_map()`**: Scans Gamma for active markets, extracts 2-3-word n-grams ≥ 8 chars as keys mapped to `[yes_token_id, no_token_id]`.
+
+**`_direction(title)`**: Classifies story as YES or NO trade using YES_KEYWORDS / NO_KEYWORDS word sets; defaults to YES.
+
+**CLI**:
+```bash
+python scripts/news_latency.py --build-map          # must run once first
+python scripts/news_latency.py --loop [--interval 10] [--budget 20]
+python scripts/news_latency.py --once
+python scripts/news_latency.py --dry-run
+python scripts/news_latency.py --status
+```
+
+**State file**: `news_latency_state.json`, **map file**: `news_latency_map.json`
+
+**STRATEGY_REGISTRY key**: `"news_latency"`, alias `["nl", "fast-news"]`, `budget_pct=5`
+
+---
+
+## 39. strategy_evaluator.py — Performance Tracker with Auto-Disable
+
+**Purpose**: Measure real-world effectiveness of every strategy; auto-disable losers; suggest scaling winners.
+
+**Location**: `scripts/strategy_evaluator.py`
+
+**Metrics computed per strategy**:
+| Metric | Description |
+|---|---|
+| `roi_pct` | `(total_profit / total_spent) × 100` |
+| `win_rate` | wins / (wins + losses) from history entries with outcome/profit fields |
+| `avg_edge` | mean of `edge` values across history entries |
+| `sharpe` | mean daily return / std dev (requires ≥ 5 data points) |
+| `total_trades` | from `trades_executed` in state file |
+
+**State sources**:
+```
+auto_arbitrage_state.json   news_trader_state.json
+market_maker_state.json     ai_signals.json
+correlation_arb_state.json  time_decay_state.json
+logical_arb_state.json      resolution_arb_state.json
+news_latency_state.json
+```
+
+**`--auto-disable`**: Writes `disabled_strategies` list to `master_state.json`. `master_bot` reads this before spawning each strategy and skips disabled ones.
+
+**CLI**:
+```bash
+python scripts/strategy_evaluator.py --report            # ranked table
+python scripts/strategy_evaluator.py --report --json     # machine-readable
+python scripts/strategy_evaluator.py --all               # report + recommend
+python scripts/strategy_evaluator.py --auto-disable [--min-trades N]
+python scripts/strategy_evaluator.py --recommend
+python scripts/strategy_evaluator.py --reset STRATEGY    # clear state file
+python scripts/strategy_evaluator.py --re-enable STRATEGY
+# shortcut:
+python scripts/master_bot.py --evaluate
+```
+
+**NL invocations**:
+- "How are my strategies performing?" → `--report`
+- "Which strategies are making money?" → `--recommend`
+- "Auto-disable losing strategies" → `--auto-disable --min-trades 30`
+- "Re-enable news_trader" → `--re-enable news_trader`
+
+**State files written**: `evaluator_state.json` (snapshot), modifications to `master_state.json`
+
+**Integration**: `master_bot.py --evaluate` calls `strategy_evaluator.py --report --recommend` via subprocess.
 
 - If commands fail with `ModuleNotFoundError`: run `pip install py-clob-client requests python-dotenv web3 --break-system-packages`
 - If `401 Unauthorized`: credentials are wrong or expired — re-derive with `poly setup`
@@ -1151,3 +1337,5 @@ If `total_budget × strategy_budget_pct% < $1.00`, master_bot prints a warning a
 6. **Warn the user** that prediction markets carry risk and past performance is not indicative of future results
 7. **Never store private keys in logs or output** — mask as `0x****...****`
 8. **Before sizing any trade**, run `poly prob --market-id ID --balance N` to get a calibrated fair probability and suggested Kelly size
+9. **If asked to evaluate strategy performance**, run `strategy_evaluator.py --report` first — never recommend scaling a strategy without checking its ROI and trade count
+10. **Auto-disable threshold**: only invoke `--auto-disable` after at least 30 trades per strategy (the default `--min-trades 30`) — fewer trades have too much variance to draw conclusions

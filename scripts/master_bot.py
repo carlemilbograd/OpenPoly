@@ -65,7 +65,7 @@ STRATEGY_REGISTRY: dict[str, dict] = {
         "loop_flags":  ["--interval", "5m"],
         "once_flags":  ["--once"],
         "budget_flag": "--max-budget",
-        "budget_pct":  30,
+        "budget_pct":  25,
         "alias":       ["arb"],
         "description": "Same-market YES/NO arbitrage",
     },
@@ -74,7 +74,7 @@ STRATEGY_REGISTRY: dict[str, dict] = {
         "loop_flags":  ["--once", "--scan"],   # no native loop; master re-spawns
         "once_flags":  ["--once", "--scan"],
         "budget_flag": "--budget",
-        "budget_pct":  20,
+        "budget_pct":  10,
         "alias":       ["corr"],
         "description": "Cross-market correlated-pair arbitrage",
     },
@@ -83,7 +83,7 @@ STRATEGY_REGISTRY: dict[str, dict] = {
         "loop_flags":  ["--loop", "--interval", "30"],
         "once_flags":  ["--once"],
         "budget_flag": "--size",
-        "budget_pct":  20,
+        "budget_pct":  15,
         "alias":       ["mm"],
         "description": "Bid/ask spread capture",
     },
@@ -92,7 +92,7 @@ STRATEGY_REGISTRY: dict[str, dict] = {
         "loop_flags":  ["--loop", "--interval", "5"],
         "once_flags":  ["--once"],
         "budget_flag": "--budget",
-        "budget_pct":  15,
+        "budget_pct":  10,
         "alias":       ["news"],
         "description": "News-driven momentum trades",
     },
@@ -101,7 +101,7 @@ STRATEGY_REGISTRY: dict[str, dict] = {
         "loop_flags":  ["--loop", "--interval", "30"],
         "once_flags":  ["--once", "--execute"],
         "budget_flag": "--budget",
-        "budget_pct":  10,
+        "budget_pct":  5,
         "alias":       ["ai"],
         "description": "AI/heuristic signal trading",
     },
@@ -113,6 +113,42 @@ STRATEGY_REGISTRY: dict[str, dict] = {
         "budget_pct":  0,
         "alias":       ["mon", "monitor"],
         "description": "Market anomaly alerts (no trading)",
+    },
+    "time_decay": {
+        "script":      "time_decay.py",
+        "loop_flags":  ["--loop", "--interval", "300"],
+        "once_flags":  ["--once"],
+        "budget_flag": "--budget",
+        "budget_pct":  15,
+        "alias":       ["td", "decay"],
+        "description": "Resolution-timing FADE/RUSH edge",
+    },
+    "logical_arb": {
+        "script":      "logical_arb.py",
+        "loop_flags":  ["--once"],          # scan-only; master re-spawns
+        "once_flags":  ["--once"],
+        "budget_flag": "--budget",
+        "budget_pct":  10,
+        "alias":       ["la", "logic"],
+        "description": "Logical constraint violation arb",
+    },
+    "resolution_arb": {
+        "script":      "resolution_arb.py",
+        "loop_flags":  ["--once"],
+        "once_flags":  ["--once"],
+        "budget_flag": "--budget",
+        "budget_pct":  5,
+        "alias":       ["res", "resarb"],
+        "description": "Near-settlement YES+NO>1 arb",
+    },
+    "news_latency": {
+        "script":      "news_latency.py",
+        "loop_flags":  ["--loop", "--interval", "10"],
+        "once_flags":  ["--once"],
+        "budget_flag": "--budget",
+        "budget_pct":  5,
+        "alias":       ["nl", "fast-news"],
+        "description": "Sub-10s RSS news trading",
     },
     # ── Add new strategies below this line ────────────────────────────────────
     # "my_strategy": {
@@ -396,6 +432,15 @@ def _supervisor_loop(strategies: list[str], total_budget: float,
 
     for name in strategies:
         cfg    = STRATEGY_REGISTRY[name]
+
+        # Skip strategies auto-disabled by strategy_evaluator
+        _master_st = load_state()
+        _disabled  = _master_st.get("disabled_strategies") or []
+        if name in _disabled:
+            print(f"  ↷  {name} is DISABLED by strategy_evaluator — skipping. "
+                  f"(run --evaluate or --re-enable {name} to restore)")
+            continue
+
         budget = _budget_for(name, total_budget) if total_budget > 0 else 0
 
         # Warn if per-strategy budget is below Polymarket minimum
@@ -566,6 +611,8 @@ def main():
     parser.add_argument("--only",     default=None, help="Comma-separated subset: 'arb,mm,news'")
     parser.add_argument("--heartbeat",type=int,   default=HEARTBEAT_MIN,
                         help=f"Minutes between heartbeat notifications (default {HEARTBEAT_MIN})")
+    parser.add_argument("--evaluate",  action="store_true",
+                        help="Show per-strategy performance report (via strategy_evaluator)")
     parser.add_argument("--list-strategies", action="store_true",
                         help="List all registered strategies and exit")
     args = parser.parse_args()
@@ -583,6 +630,12 @@ def main():
 
     if args.status:
         show_status(state)
+        return
+
+    if args.evaluate:
+        import subprocess, sys
+        evaluator = Path(__file__).parent / "strategy_evaluator.py"
+        subprocess.run([sys.executable, str(evaluator), "--report", "--recommend"], check=False)
         return
 
     if args.pnl:

@@ -63,6 +63,11 @@ No intermediary. No dashboard. Just your agent and a full trading toolkit.
 | **Automated setup** | One-command idempotent setup wizard — deps, .env, key validation, API creds, risk guard, scheduler, DB |
 | **Security** | API key entropy check at startup, secret masking in all error output, kill switch wired into every auto bot |
 | **Input guards** | Hard minimum order size ($1) enforced at startup in every bot + master_bot; news_trader interval clamped to ≥ 3 min; Gamma API rate-limited to prevent 429 throttling |
+| **Time decay arb** | FADE/RUSH sub-strategies on resolution-timing mispricings — exponential decay model, ≤7 day window |
+| **Logical arb** | Strictly enforces implication + mutex constraints across related markets — 7 built-in logic groups |
+| **Resolution arb** | Near-settlement YES+NO>1 guaranteed-profit arbitrage — lowest-risk strategy in the suite |
+| **News latency** | Sub-10-second RSS-only news trading — pre-cached keyword map, no clustering overhead |
+| **Strategy evaluator** | Per-strategy ROI/win-rate/Sharpe tracker with auto-disable; integrates with master_bot |
 | **Tests & CI** | 100 pytest tests across 5 test files, GitHub Actions CI on every push |
 
 ---
@@ -740,6 +745,105 @@ print(result["suggested_size"])  # 22.50  USDC
 Run `poly prob --market-id ID --balance N` before sizing any trade.
 </details>
 
+<details>
+<summary><b>time_decay.py</b> — Resolution-timing edge (FADE / RUSH)</summary>
+
+```bash
+python scripts/time_decay.py --scan                         # scan markets nearing deadline
+python scripts/time_decay.py --scan --execute --budget 25   # trade best opportunity
+python scripts/time_decay.py --once                         # one scan+execute cycle
+python scripts/time_decay.py --loop --interval 300          # watch every 5 minutes
+python scripts/time_decay.py --max-days 3 --min-edge 0.05   # tighter filters
+python scripts/time_decay.py --dry-run                      # preview without orders
+python scripts/time_decay.py --status                       # show trade history
+```
+
+Two sub-strategies:
+- **FADE**: buy NO when market is still priced as if the event *might* happen, but the deadline is too close — exponential decay model with `DECAY_PER_DAY=0.30`
+- **RUSH**: buy YES when high-probability outcome is still *under*priced near resolution
+
+Edge formula: `fair_no = 1 - yes_price × (1 - 0.30)^days`.  Entry if `fair_no - live_no - fee ≥ min_edge`.
+</details>
+
+<details>
+<summary><b>logical_arb.py</b> — Logical constraint violation arbitrage</summary>
+
+```bash
+python scripts/logical_arb.py --scan                       # scan for violations
+python scripts/logical_arb.py --scan --execute --budget 50 # trade best violation
+python scripts/logical_arb.py --once                       # one cycle
+python scripts/logical_arb.py --min-edge 0.04 --top 3      # tighter / fewer results
+python scripts/logical_arb.py --dry-run --json             # preview as JSON
+python scripts/logical_arb.py --status                     # trade history
+```
+
+Enforces strict mathematical bounds between related markets:
+- **IMPLICATION**: if `P(narrow) > P(broad)` (e.g. P(Trump wins GOP primary) > P(Republican wins presidency)) → buy NO(narrow) + YES(broad)
+- **MUTEX**: if `P(team A wins) + P(team B wins) > 1.0` in an exclusive tournament → buy NO on both legs
+
+Seven built-in logic groups (trump→republican, btc_spot_etf→btc_etf, NBA/NFL champions, etc.)
+</details>
+
+<details>
+<summary><b>resolution_arb.py</b> — Near-settlement guaranteed-profit arbitrage</summary>
+
+```bash
+python scripts/resolution_arb.py --scan                       # scan near-deadline markets
+python scripts/resolution_arb.py --scan --max-days 1          # within 24 hours only
+python scripts/resolution_arb.py --scan --execute --budget 75 # execute best opportunity
+python scripts/resolution_arb.py --once                       # one cycle
+python scripts/resolution_arb.py --include-anytime            # also check event-triggered markets
+python scripts/resolution_arb.py --dry-run --json             # preview
+python scripts/resolution_arb.py --status                     # trade history
+```
+
+Three opportunity types:
+- **BOTH_SIDES**: `YES + NO > 1.0 + fees` → sell both sides → guaranteed profit at resolution
+- **EXCESS_NO**: YES ≥ 0.93 but NO ≥ 0.04 → NO is mispriced high relative to near-certain outcome
+- **EXCESS_YES**: symmetric case
+
+Lowest risk of all strategies — profit is locked in before the market closes.
+</details>
+
+<details>
+<summary><b>news_latency.py</b> — Sub-10-second RSS-only news trading</summary>
+
+```bash
+python scripts/news_latency.py --build-map          # build keyword→market map (run first)
+python scripts/news_latency.py --loop               # continuous trading loop (10s poll)
+python scripts/news_latency.py --loop --budget 20 --dry-run   # preview mode
+python scripts/news_latency.py --once               # single poll cycle
+python scripts/news_latency.py --status             # signal + trade history
+```
+
+Speed-optimised variant of `news_trader` — targets < 10 s from headline to order:
+- RSS feeds only (no GDELT/NewsAPI — eliminates ~2s overhead)
+- Pre-cached `news_latency_map.json` keyword→token_id map refreshed every 5 min
+- No clustering or full impact scoring — simple keyword match + direction detection
+- `MIN_EDGE = 0.05` buffer compensates for the removed slippage gate
+- Poll interval hard-clamped to 10 s minimum
+</details>
+
+<details>
+<summary><b>strategy_evaluator.py</b> — Performance tracker with auto-disable</summary>
+
+```bash
+python scripts/strategy_evaluator.py --report               # ranked performance table
+python scripts/strategy_evaluator.py --report --json        # machine-readable
+python scripts/strategy_evaluator.py --recommend            # scale-up/down suggestions
+python scripts/strategy_evaluator.py --all                  # report + recommend
+python scripts/strategy_evaluator.py --auto-disable         # disable ROI<0 strategies
+python scripts/strategy_evaluator.py --auto-disable --min-trades 50  # require 50 trades first
+python scripts/strategy_evaluator.py --reset STRATEGY       # clear a strategy's state
+python scripts/strategy_evaluator.py --re-enable STRATEGY   # un-disable a strategy
+```
+
+Reads all strategy state files and computes per-strategy: ROI%, win rate, avg edge, total P&L, estimated Sharpe.
+`--auto-disable` writes the disabled list into `master_state.json`; `master_bot` checks this before spawning each strategy.
+
+Also accessible via `python scripts/master_bot.py --evaluate`.
+</details>
+
 ---
 
 ## Project structure
@@ -800,7 +904,12 @@ OpenPoly/
     ├── prob_model.py          # calibrated fair-probability + Kelly sizing
     ├── notifier.py            # trade open/close + lifecycle notifications → desktop + JSON log
     ├── master_bot.py          # supervised all-in-one runner — crash-restart, heartbeat, STRATEGY_REGISTRY
-    └── setup_all.py           # idempotent 8-step setup wizard
+    ├── setup_all.py           # idempotent 8-step setup wizard
+    ├── time_decay.py          # resolution-timing edge — FADE overpriced YES near deadline
+    ├── logical_arb.py         # logical constraint violations — P(narrow) > P(broad) etc.
+    ├── resolution_arb.py      # near-settlement YES+NO > 1 guaranteed-profit arbitrage
+    ├── news_latency.py        # sub-10-second RSS-only news trading
+    └── strategy_evaluator.py  # per-strategy ROI/win-rate tracker with auto-disable
 ```
 
 ---
