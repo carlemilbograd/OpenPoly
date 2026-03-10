@@ -30,6 +30,7 @@ Polymarket APIs. It can:
 12. **Trade Notifications** — all auto bots push open/close events with macOS desktop banners and a persistent JSON log readable by the agent
 13. **Master Supervisor** — `master_bot.py` runs all strategies as supervised subprocesses with auto crash-restart, heartbeat notifications, and a single STRATEGY_REGISTRY to register new strategies
 14. **Automated Setup** — `setup_all.py` is an idempotent 8-step wizard that configures the entire skill from scratch in one command
+15. **Input Guards** — `_guards.py` enforces hard minimum order sizes and API rate limits across all bots; mis-configured values are caught at startup before any order is placed
 
 ---
 
@@ -1084,6 +1085,55 @@ poly setup --skip-creds          # skip API credential derivation (step 4)
 
 ---
 
+## 34. _guards.py — Hard Runtime Limits
+
+**Purpose**: Module of constants and guard functions that enforce non-negotiable safety limits on user-supplied CLI values. Imported by every trading bot and master_bot. Cannot be overridden by argument flags.
+
+**Constants**:
+| Constant | Value | Description |
+|---|---|---|
+| `MIN_ORDER_USD` | `1.0` | Polymarket minimum order size (USDC) |
+| `SUGGESTED_MIN_USD` | `5.0` | Practical floor — covers fees even on small markets |
+| `MIN_NEWS_INTERVAL` | `3.0` | Min minutes between `news_trader` cycles |
+| `GAMMA_RATE_LIMIT_SEC` | `0.35` | Min seconds between Gamma API calls in the mapper |
+
+**Functions**:
+
+`check_min_order(amount_usd, *, flag, bot, exit_on_fail=False) -> bool`
+- Returns `True` if `amount_usd >= MIN_ORDER_USD`
+- If below minimum: prints a warning to stderr, fires a `notify_event` with `level="warning"`, and if `exit_on_fail=True` terminates the process
+- All trading bots call this with `exit_on_fail=True` at startup so below-minimum runs are caught before any network activity
+
+`enforce_min_interval(interval_min, bot="") -> float`
+- Returns the clamped interval (never below `MIN_NEWS_INTERVAL`)
+- If clamped, prints a warning explaining the 429-prevention reason
+- Used by `news_trader.py` on `--interval`
+
+`gamma_rate_wait() -> None`
+- Thread-safe blocking call: waits until `GAMMA_RATE_LIMIT_SEC` has elapsed since the last Gamma API request
+- Called inside `news/mapper.py` before every `requests.get()` to Gamma
+- Prevents burst 429 errors when many stories are mapped in one pipeline cycle
+
+**Which bots call which guard**:
+| Bot | Guard called | Flag checked |
+|---|---|---|
+| `news_trader` | `check_min_order` + `enforce_min_interval` | `--budget`, `--interval` |
+| `market_maker` | `check_min_order` | `--size` |
+| `ai_automation` | `check_min_order` | `--budget` |
+| `correlation_arbitrage` | `check_min_order` | `--budget` |
+| `auto_arbitrage` | `check_min_order` | `--max-budget` |
+| `master_bot` | inline budget check per strategy | computed budget_pct % of total |
+| `news/mapper.py` | `gamma_rate_wait` | (implicit — every Gamma call) |
+
+**When master_bot warns about budget**:
+If `total_budget × strategy_budget_pct% < $1.00`, master_bot prints a warning and sends a notification suggesting the minimum `--budget` needed for that strategy combination.
+
+**How to adjust constants**: Edit `scripts/_guards.py` directly. All bots pick up the new values automatically (they import at runtime).
+
+---
+
+## Error Handling
+
 - If commands fail with `ModuleNotFoundError`: run `pip install py-clob-client requests python-dotenv web3 --break-system-packages`
 - If `401 Unauthorized`: credentials are wrong or expired — re-derive with `poly setup`
 - If `insufficient balance`: user needs to deposit USDC to their Polygon wallet
@@ -1096,6 +1146,8 @@ poly setup --skip-creds          # skip API credential derivation (step 4)
 1. **Never place a trade without explicit user confirmation**
 2. **Never invest more than the user specifies**
 3. **Before starting any automation, recommend the user configure `poly risk set --max-daily-loss 0.05`**
-4. **Warn the user** that prediction markets carry risk and past performance is not indicative of future results
-5. **Never store private keys in logs or output** — mask as `0x****...****`
-6. **Before sizing any trade**, run `poly prob --market-id ID --balance N` to get a calibrated fair probability and suggested Kelly size
+4. **If a user sets a budget below $1 per trade**, the guard will reject the run and print a suggested fix — tell the user to raise the budget to at least $5 (covers fees)
+5. **If a user sets `news_trader --interval` below 3 minutes**, it is silently clamped to 3 min — explain this to the user if they ask why the interval seems different
+6. **Warn the user** that prediction markets carry risk and past performance is not indicative of future results
+7. **Never store private keys in logs or output** — mask as `0x****...****`
+8. **Before sizing any trade**, run `poly prob --market-id ID --balance N` to get a calibrated fair probability and suggested Kelly size

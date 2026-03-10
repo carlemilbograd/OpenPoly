@@ -13,10 +13,19 @@ from __future__ import annotations
 
 import logging
 import re
+import sys
 import time
+from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+try:
+    from _guards import gamma_rate_wait
+except ImportError:
+    def gamma_rate_wait() -> None:  # fallback: no-op
+        pass
 
 log = logging.getLogger(__name__)
 
@@ -65,6 +74,7 @@ def _extract_keywords(story: dict, top_n: int = 5) -> list[str]:
 
 def _fetch_markets(query: str, limit: int = 30) -> list[dict]:
     """Search Gamma API for active markets matching *query*."""
+    gamma_rate_wait()   # enforce rate limit — prevents 429 when mapping many stories
     try:
         params = {
             "active": "true",

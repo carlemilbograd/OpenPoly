@@ -338,6 +338,12 @@ def main():
     parser.add_argument("--json",       action="store_true",       help="Output raw JSON")
     args = parser.parse_args()
 
+    # ── Hard limits (cannot be overridden by user flags) ────────────────────
+    if args.execute:
+        from _guards import check_min_order
+        check_min_order(args.budget, flag="--budget", bot="correlation_arbitrage",
+                        exit_on_fail=True)
+
     authenticated = args.execute
     client = get_client(authenticated=authenticated)
 

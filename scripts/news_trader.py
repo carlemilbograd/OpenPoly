@@ -237,6 +237,15 @@ def main():
                    help="Output --history as JSON")
 
     args  = p.parse_args()
+
+    # ── Hard limits (cannot be overridden by user flags) ────────────────────
+    from _guards import enforce_min_interval, check_min_order
+    if args.once or args.loop:
+        args.interval = enforce_min_interval(args.interval, bot="news_trader")
+        if not args.dry_run:
+            check_min_order(args.budget, flag="--budget",
+                            bot="news_trader", exit_on_fail=True)
+
     state = load_state()
 
     # Info commands

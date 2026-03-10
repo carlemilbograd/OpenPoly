@@ -38,6 +38,7 @@ from pathlib import Path
 SCRIPTS_DIR = Path(__file__).parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 from _utils import SKILL_DIR, LOG_DIR, load_json, save_json
+from _guards import check_min_order, MIN_ORDER_USD
 
 STATE_FILE    = SKILL_DIR / "master_state.json"
 HEARTBEAT_MIN = 30       # minutes between heartbeat notifications
@@ -396,6 +397,33 @@ def _supervisor_loop(strategies: list[str], total_budget: float,
     for name in strategies:
         cfg    = STRATEGY_REGISTRY[name]
         budget = _budget_for(name, total_budget) if total_budget > 0 else 0
+
+        # Warn if per-strategy budget is below Polymarket minimum
+        if cfg.get("budget_flag") and total_budget > 0 and budget < MIN_ORDER_USD and not dry_run:
+            pct = cfg.get("budget_pct", 0)
+            needed = round(MIN_ORDER_USD / (pct / 100), 2) if pct > 0 else 0
+            print(
+                f"  ⚠️  {name}: budget ${budget:.2f} is below the minimum "
+                f"${MIN_ORDER_USD:.2f}.\n"
+                f"      → Increase --budget to at least ${needed:.2f}  "
+                f"(or exclude {name} with --only)",
+            )
+            try:
+                from notifier import notify_event
+                notify_event(
+                    source="master_bot",
+                    title=f"⚠️ {name}: budget below minimum",
+                    body=(
+                        f"Computed budget ${budget:.2f} ({pct}% of "
+                        f"${total_budget:.0f}) is below the Polymarket minimum "
+                        f"${MIN_ORDER_USD:.2f}. "
+                        f"Increase --budget to at least ${needed:.2f}."
+                    ),
+                    level="warning",
+                )
+            except Exception:
+                pass
+
         p      = _spawn(name, cfg, budget, dry_run, once, state)
         procs[name] = p
         if p:

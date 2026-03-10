@@ -352,6 +352,12 @@ def main():
     parser.add_argument("--signals",        action="store_true",  help="Print currently saved signals")
     args = parser.parse_args()
 
+    # ── Hard limits (cannot be overridden by user flags) ────────────────────
+    if args.execute and not args.dry_run:
+        from _guards import check_min_order
+        check_min_order(args.budget, flag="--budget", bot="ai_automation",
+                        exit_on_fail=True)
+
     if args.signals:
         sigs = load_signals()
         if not sigs:

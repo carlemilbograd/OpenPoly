@@ -62,6 +62,7 @@ No intermediary. No dashboard. Just your agent and a full trading toolkit.
 | **Master bot** | Supervised all-in-one runner — crash auto-restart, heartbeat alerts, `--only` subset, kill-switch aware |
 | **Automated setup** | One-command idempotent setup wizard — deps, .env, key validation, API creds, risk guard, scheduler, DB |
 | **Security** | API key entropy check at startup, secret masking in all error output, kill switch wired into every auto bot |
+| **Input guards** | Hard minimum order size ($1) enforced at startup in every bot + master_bot; news_trader interval clamped to ≥ 3 min; Gamma API rate-limited to prevent 429 throttling |
 | **Tests & CI** | 100 pytest tests across 5 test files, GitHub Actions CI on every push |
 
 ---
@@ -751,6 +752,7 @@ OpenPoly/
 └── scripts/
     ├── _client.py                # shared CLOB client factory
     ├── _utils.py                 # shared paths, helpers, fee constant
+    ├── _guards.py                # hard runtime limits — min order $, interval clamp, Gamma rate limiter
     │
     ├── setup_credentials.py      # one-time key derivation
     ├── portfolio.py
@@ -835,6 +837,9 @@ For types `1` and `2`: export your private key from **polymarket.com → Setting
 - API key/secret undergo an entropy check at startup — placeholder strings (`YOUR_KEY`, blank values, all-same-chars, keys shorter than 32 hex chars) are rejected before any network call
 - Any exception that mentions a key or secret has it redacted from output — never appears in plain text logs
 - Kill switch (`poly risk kill`) is wired into all autonomous bots — a single command halts `market_maker`, `auto_arbitrage`, `ai_automation`, and `trade`
+- Hard input guards (`_guards.py`) enforce a minimum $1 order size in every bot at startup; values below minimum trigger a warning, suggest a fix, and abort the run — prevents accidentally trading dust amounts
+- `news_trader --interval` is clamped to a minimum of 3 minutes regardless of user input — prevents Gamma API 429 rate-limit errors from rapid polling
+- Gamma API calls in the news pipeline are rate-limited to 350 ms apart — prevents burst 429 errors when many stories require market lookups in a single cycle
 - `.env` is in `.gitignore` — it will never be committed
 - Every trade script shows a preview and requires explicit confirmation before submitting
 - Order execution uses the official [py-clob-client](https://github.com/Polymarket/py-clob-client) library only

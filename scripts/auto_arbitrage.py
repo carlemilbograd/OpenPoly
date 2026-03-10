@@ -402,6 +402,12 @@ def main():
                         help="Print bot statistics and exit")
     args = parser.parse_args()
 
+    # ── Hard limits (cannot be overridden by user flags) ────────────────────
+    if args.max_budget and args.max_budget > 0 and not args.dry_run:
+        from _guards import check_min_order
+        check_min_order(args.max_budget, flag="--max-budget", bot="auto_arbitrage",
+                        exit_on_fail=True)
+
     global SCAN_LIMIT
     SCAN_LIMIT = args.scan_limit
 

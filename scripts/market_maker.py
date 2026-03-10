@@ -458,6 +458,12 @@ def main():
     parser.add_argument("--close",        action="store_true",                 help="Cancel all quotes for --market-id")
     args = parser.parse_args()
 
+    # ── Hard limits (cannot be overridden by user flags) ────────────────────
+    if not args.dry_run and not args.status and not args.scan_targets and not args.close:
+        from _guards import check_min_order
+        check_min_order(args.size, flag="--size", bot="market_maker",
+                        exit_on_fail=True)
+
     # ── Kill switch check ─────────────────────────────────────────────────────
     from risk_guard import is_killed
     if is_killed():
