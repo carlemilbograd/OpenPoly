@@ -113,7 +113,8 @@ def _telegram(text: str):
     Silently skips if either var is missing.  Never raises — a failed
     Telegram push must never crash a live trading bot.
 
-    Respects POLYMARKET_PROXY if set.
+    Always uses a direct connection — POLYMARKET_PROXY is intentionally
+    ignored here; the proxy is only for Polymarket order placement.
     """
     token   = os.getenv("TELEGRAM_BOT_TOKEN",  "").strip()
     chat_id = os.getenv("TELEGRAM_CHAT_ID",    "").strip()
@@ -128,13 +129,8 @@ def _telegram(text: str):
         "disable_web_page_preview": True,
     }).encode()
     url   = f"https://api.telegram.org/bot{token}/sendMessage"
-    proxy = os.getenv("POLYMARKET_PROXY", "").strip() or None
     try:
-        if proxy:
-            handler = urllib.request.ProxyHandler({"http": proxy, "https": proxy})
-            opener  = urllib.request.build_opener(handler)
-        else:
-            opener  = urllib.request.build_opener()
+        opener = urllib.request.build_opener()
         req = urllib.request.Request(
             url, data=payload,
             headers={"Content-Type": "application/json"},
