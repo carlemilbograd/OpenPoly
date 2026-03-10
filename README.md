@@ -173,9 +173,12 @@ python scripts/orderbook.py --token-id TOKEN_ID --depth 10
 </details>
 
 <details>
-<summary><b>trade.py</b> — Place orders (with confirmation)</summary>
+<summary><b>trade.py</b> — Place orders (with confirmation) + preflight dry-run</summary>
 
 ```bash
+# Preflight check — verify everything before committing money (run this first)
+python scripts/trade.py --token-id TOKEN_ID --side BUY --price 0.55 --size 10 --dry-run
+
 # Limit order (GTC)
 python scripts/trade.py --token-id TOKEN_ID --side BUY --price 0.55 --size 10
 
@@ -186,7 +189,18 @@ python scripts/trade.py --token-id TOKEN_ID --side BUY --size 25 --type FOK
 python scripts/trade.py --token-id TOKEN_ID --side SELL --price 0.70 --size 5 \
   --type GTD --expiry 3600
 ```
-Always shows an order preview and asks for confirmation before submitting.
+
+`--dry-run` runs 5 checks without submitting anything:
+
+| Check | What it catches |
+|---|---|
+| Credentials | Bad/expired API key |
+| Balance | Not enough USDC for the order size |
+| Market active | Closed market or wrong token ID |
+| Geoblock | `403`/`451` from Polymarket if region is blocked |
+| Order signing | Key format errors (pure local crypto, no POST) |
+
+Always shows an order preview and asks for confirmation before submitting a real order.
 </details>
 
 <details>
