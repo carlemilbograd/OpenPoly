@@ -61,10 +61,10 @@ COMMANDS = {
     "risk":         ("risk_guard.py",            "Daily loss limits + kill switch  status|kill|reset|set"),
     "db":           ("db.py",                    "SQLite data layer  status|migrate|signals|trades|accuracy"),
     "prob":         ("prob_model.py",            "Calibrated fair-probability estimate  --market-id ID  [--balance N] [--json]"),
-    "geoblock":     ("geoblock.py",              "Check whether your IP/account is geo-blocked  [--no-auth] [--json]"),
+    "geoblock":     ("geoblock.py",              "Check whether your IP/account is geo-blocked  [--json]"),
 
     # Notifications
-    "notify":       ("notifier.py",              "Bot trade notifications  [--limit N] [--since 2h] [--bot NAME] [--clear]"),
+    "notify":       ("notifier.py",              "Bot trade notifications  [--limit N] [--since 2h] [--bot NAME] [--clear] [--test-telegram]"),
 
     # New strategies
     "time-decay":   ("time_decay.py",            "Resolution-timing edge  [--scan] [--execute --budget N] [--once] [--loop]"),
