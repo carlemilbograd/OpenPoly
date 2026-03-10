@@ -61,6 +61,7 @@ No intermediary. No dashboard. Just your agent and a full trading toolkit.
 | **Notifications** | All auto bots push trade open/close events — macOS banners + persistent JSON log + optional **Telegram** push |
 | **Master bot** | Supervised all-in-one runner — crash auto-restart, heartbeat alerts, `--only` subset, kill-switch aware |
 | **Automated setup** | One-command idempotent setup wizard — deps, .env, key validation, API creds, risk guard, scheduler, DB |
+| **Emergency stop** | `poly stopall` — kills every bot, zombie-scans via pgrep, and activates kill switch in one command |
 | **Security** | API key entropy check at startup, secret masking in all error output, kill switch wired into every auto bot |
 | **Input guards** | Hard minimum order size ($1) enforced at startup in every bot + master_bot; news_trader interval clamped to ≥ 3 min; Gamma API rate-limited to prevent 429 throttling |
 | **Time decay arb** | FADE/RUSH sub-strategies on resolution-timing mispricings — exponential decay model, ≤7 day window |
@@ -154,6 +155,7 @@ These are real examples of what you can say. The agent picks the right script.
 | Auto-disable losing strategies | `strategy_evaluator.py --auto-disable --min-trades 30` |
 | First-time setup (automated) | `setup_all.py --yes` |
 | Redeem resolved winnings | `redeem.py --dry-run` |
+| Stop every running bot immediately | `stopall.py` |
 | Schedule auto arb every 15 min | `scheduler.py add` + `scheduler.py start` |
 
 </details>
@@ -863,6 +865,33 @@ Reads all strategy state files and computes per-strategy: ROI%, win rate, avg ed
 Also accessible via `python scripts/master_bot.py --evaluate`.
 </details>
 
+<details>
+<summary><b>stopall.py</b> — Kill all running bots</summary>
+
+```bash
+poly stopall                  # stop everything + activate kill switch
+poly stopall --dry-run        # show what would be killed, do nothing
+poly stopall --force          # skip 3-second grace period, SIGKILL immediately
+poly stopall --no-guard       # kill processes but don't activate kill switch
+```
+
+Three-layer bot hunt so nothing slips through:
+
+| Layer | How | What it catches |
+|---|---|---|
+| 1. State files | Reads `master_state.json` + `omni_state.json` | Bots started via `master`/`omni` |
+| 2. PID file | Reads `scheduler.pid` | Scheduler daemon |
+| 3. Process scan | `pgrep -f` over all 13 bot script names | Orphans, zombies, manually started processes |
+
+Sequence: `SIGTERM` → 3-second grace window → `SIGKILL` any survivors.
+
+After killing: clears stored PIDs from state files so `poly master --status` shows clean state, then activates the risk_guard kill switch.
+
+Resume trading afterwards: `poly risk reset`
+
+Aliases: `poly stop-all` · `poly killall` · `poly emergency` · `poly panic`
+</details>
+
 ---
 
 ## Project structure
@@ -928,7 +957,8 @@ OpenPoly/
     ├── logical_arb.py         # logical constraint violations — P(narrow) > P(broad) etc.
     ├── resolution_arb.py      # near-settlement YES+NO > 1 guaranteed-profit arbitrage
     ├── news_latency.py        # sub-10-second RSS-only news trading
-    └── strategy_evaluator.py  # per-strategy ROI/win-rate tracker with auto-disable
+    ├── strategy_evaluator.py  # per-strategy ROI/win-rate tracker with auto-disable
+    └── stopall.py             # nuclear stop — kills all bots (3-layer: state + PID file + pgrep)
 ```
 
 ---

@@ -76,6 +76,7 @@ COMMANDS = {
     # All-in-one
     "master":       ("master_bot.py",             "Master supervisor — all strategies  --start --budget N | --status | --stop | --pnl"),
     "setup":        ("setup_all.py",              "One-command automated setup  [--yes] [--dry-run] [--skip-creds]"),
+    "stopall":      ("stopall.py",                "Kill ALL running bot processes + activate kill switch  [--force] [--dry-run]"),
 }
 
 # ── aliases ───────────────────────────────────────────────────────────────────
@@ -143,6 +144,13 @@ ALIASES = {
     "init":         "setup",
     "install":      "setup",
     "configure":    "setup",
+
+    # stopall aliases
+    "stop-all":     "stopall",
+    "killall":      "stopall",
+    "kill-all":     "stopall",
+    "emergency":    "stopall",
+    "panic":        "stopall",
 }
 
 
@@ -170,7 +178,7 @@ def _print_help():
         ("New Strategies", ["time-decay", "logical-arb", "res-arb", "news-latency", "strategy-eval"]),
         ("Evaluation & Safety", ["backtest", "eval", "risk", "db", "prob", "geoblock"]),
         ("Notifications", ["notify"]),
-        ("All-in-one", ["master", "setup"]),
+        ("All-in-one", ["master", "setup", "stopall"]),
     ]
 
     for section, cmds in sections:

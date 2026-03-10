@@ -30,6 +30,7 @@ Polymarket APIs. It can:
 12. **Trade Notifications** — all auto bots push open/close events with macOS desktop banners, optional Telegram push (`TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`), and a persistent JSON log readable by the agent
 13. **Master Supervisor** — `master_bot.py` runs all strategies as supervised subprocesses with auto crash-restart, heartbeat notifications, and a single STRATEGY_REGISTRY to register new strategies
 14. **Automated Setup** — `setup_all.py` is an idempotent 8-step wizard that configures the entire skill from scratch in one command
+15. **Emergency Stop** — `stopall.py` kills every running bot (3-layer: state-file PIDs + scheduler PID file + pgrep zombie scan) and activates the kill switch
 15. **Input Guards** — `_guards.py` enforces hard minimum order sizes and API rate limits across all bots; mis-configured values are caught at startup before any order is placed
 16. **Time Decay Arbitrage** — `time_decay.py` buys NO (FADE) when a market won't resolve YES before deadline, or buys YES (RUSH) when a near-certain outcome is still underpriced
 17. **Logical Constraint Arb** — `logical_arb.py` detects implication and mutex violations across related markets (e.g. P(Trump wins primary) > P(Republican wins presidency)) and trades both legs
@@ -1120,7 +1121,40 @@ poly setup --skip-creds          # skip API credential derivation (step 4)
 
 ---
 
-## 34. _guards.py — Hard Runtime Limits
+## 34. stopall.py — Emergency Stop (Kill All Bots)
+
+**Purpose**: Nuclear stop command. Finds and kills every running OpenPoly bot process using three layers so nothing can slip through, then activates the risk_guard kill switch to block any new trades.
+
+**Three-layer bot hunt**:
+| Layer | Method | Catches |
+|---|---|---|
+| 1 | `master_state.json` + `omni_state.json` stored PIDs | Bots started via `poly master` / `poly omni` |
+| 2 | `scheduler.pid` file | Scheduler daemon |
+| 3 | `pgrep -f` over all 13 bot script names | Orphans, zombies, manually started processes |
+
+Kill sequence: SIGTERM → 3-second grace → SIGKILL any survivors.
+
+**Commands**:
+```bash
+poly stopall                  # stop all bots + activate kill switch
+poly stopall --dry-run        # show what would be killed, do nothing
+poly stopall --force          # skip grace period — SIGKILL immediately
+poly stopall --no-guard       # kill processes but don't flip kill switch
+```
+
+**After stopping**: run `poly risk reset` to resume trading.
+
+**When to use**:
+- User says "stop everything", "kill all bots", "emergency stop", "panic"
+- When bots are stuck, crashing in a loop, or consuming too much budget
+- Before maintenance or credential rotation
+- When `poly master --stop` doesn't work (processes already detached/orphaned)
+
+**Aliases**: `poly stop-all` · `poly killall` · `poly kill-all` · `poly emergency` · `poly panic`
+
+---
+
+## 35. _guards.py — Hard Runtime Limits
 
 **Purpose**: Module of constants and guard functions that enforce non-negotiable safety limits on user-supplied CLI values. Imported by every trading bot and master_bot. Cannot be overridden by argument flags.
 
@@ -1167,7 +1201,7 @@ If `total_budget × strategy_budget_pct% < $1.00`, master_bot prints a warning a
 
 ---
 
-## 35. time_decay.py — Resolution-Timing Edge
+## 36. time_decay.py — Resolution-Timing Edge
 
 **Purpose**: Trade mispricings caused by time running out on prediction markets.
 
@@ -1205,7 +1239,7 @@ poly time-decay --status
 
 ---
 
-## 36. logical_arb.py — Logical Constraint Violation Arbitrage
+## 37. logical_arb.py — Logical Constraint Violation Arbitrage
 
 **Purpose**: Enforce strict mathematical bounds between logically related markets.
 
@@ -1242,7 +1276,7 @@ poly logical-arb --status
 
 ---
 
-## 37. resolution_arb.py — Near-Settlement Guaranteed-Profit Arbitrage
+## 38. resolution_arb.py — Near-Settlement Guaranteed-Profit Arbitrage
 
 **Purpose**: Capture risk-free profit when YES + NO prices sum to more than 1 in markets near their resolution date.
 
@@ -1274,7 +1308,7 @@ poly res-arb --status
 
 ---
 
-## 38. news_latency.py — Sub-10-Second RSS News Trading
+## 39. news_latency.py — Sub-10-Second RSS News Trading
 
 **Purpose**: Trade on breaking headlines before price discovery catches up — targets < 10 s from news to order.
 
@@ -1309,7 +1343,7 @@ poly news-latency --status
 
 ---
 
-## 39. strategy_evaluator.py — Performance Tracker with Auto-Disable
+## 40. strategy_evaluator.py — Performance Tracker with Auto-Disable
 
 **Purpose**: Measure real-world effectiveness of every strategy; auto-disable losers; suggest scaling winners.
 
