@@ -151,6 +151,13 @@ Alternatively, the agent can do this inline:
 
 When the user explicitly confirms they want to trade:
 
+**Before placing — run a preflight check first:**
+```bash
+poly trade --token-id TOKEN_ID --side BUY --price 0.55 --size 10 --dry-run
+```
+This verifies credentials, balance, market status, and geoblock access **without submitting anything**.
+Run this whenever the user asks "can I trade?", "am I blocked?", or "do I have enough balance?"
+
 **Limit order:**
 ```bash
 poly trade --token-id TOKEN_ID --side BUY --price 0.55 --size 10 --type GTC
@@ -165,6 +172,7 @@ poly trade --token-id TOKEN_ID --side BUY --size 25 --type FOK
 - `--price`: price in USDC (0.01–0.99), omit for market orders
 - `--size`: amount in USDC
 - `--type`: GTC (limit), GTD (limit with expiry), FOK (market fill-or-kill)
+- `--dry-run`: preflight only — checks credentials, balance, market active, geoblock, local signing
 
 ⚠️ **ALWAYS confirm with the user before executing a trade.** Show the order details (market name, side, price, size, estimated cost) and ask "Shall I place this order?" before running.
 
