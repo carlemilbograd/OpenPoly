@@ -118,7 +118,7 @@ def _telegram(text: str):
     token   = os.getenv("TELEGRAM_BOT_TOKEN",  "").strip()
     chat_id = os.getenv("TELEGRAM_CHAT_ID",    "").strip()
     if not token or not chat_id:
-        return
+        return False, "TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set"
 
     import urllib.request, urllib.error
     payload = json.dumps({
@@ -143,15 +143,17 @@ def _telegram(text: str):
             raw = resp.read()
             result = json.loads(raw)
             if not result.get("ok"):
-                print(
-                    f"[telegram] API error: {result.get('description', raw)}",
-                    file=sys.stderr, flush=True,
-                )
+                err = result.get('description', raw)
+                print(f"[telegram] API error: {err}", file=sys.stderr, flush=True)
+                return False, str(err)
+            return True, None
     except urllib.error.HTTPError as e:
         body = e.read().decode(errors="replace")
         print(f"[telegram] HTTP {e.code}: {body}", file=sys.stderr, flush=True)
+        return False, f"HTTP {e.code}: {body}"
     except Exception as e:
         print(f"[telegram] send failed: {e}", file=sys.stderr, flush=True)
+        return False, str(e)
 
 
 def _print(line: str):
@@ -373,11 +375,26 @@ def _main():
                 "         TELEGRAM_CHAT_ID=123456789\n"
             )
             sys.exit(1)
-        _telegram(
+        ok, err = _telegram(
             "✅ <b>OpenPoly Telegram connected</b>\n"
             "Trade notifications will now appear here."
         )
-        print("  ✓  Test message sent — check your Telegram chat.\n")
+        if ok:
+            print("  ✓  Test message sent — check your Telegram chat.\n")
+        else:
+            print(
+                f"  ✗  Telegram send failed: {err}\n"
+                "\n"
+                "  Troubleshooting:\n"
+                "    • Bot token: make sure TELEGRAM_BOT_TOKEN is correct\n"
+                "    • Chat ID: message your bot at least once, then visit\n"
+                "        https://api.telegram.org/bot<TOKEN>/getUpdates\n"
+                "      and copy the chat 'id' from the first result\n"
+                "    • The chat ID must be plain integer \n"
+                "      (negative = group chat, positive = DM)\n"
+                "    • If the bot was never messaged, getUpdates returns []\n"
+            )
+            sys.exit(1)
         return
 
     if args.clear:
