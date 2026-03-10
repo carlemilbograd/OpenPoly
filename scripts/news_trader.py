@@ -30,8 +30,6 @@ from _utils  import SKILL_DIR, LOG_DIR, load_json, save_json
 
 from news.sources.rss import DEFAULT_FEEDS
 from news.pipeline     import run_pipeline, PipelineResult
-from py_clob_client.clob_types  import OrderArgs, OrderType
-from py_clob_client.order_builder.constants import BUY
 
 # -- Logging ------------------------------------------------------------------
 logging.basicConfig(
@@ -98,6 +96,8 @@ def execute_result(pr: PipelineResult, budget: float, client, dry_run: bool) -> 
         return record
 
     try:
+        from py_clob_client.clob_types import OrderArgs, OrderType
+        from py_clob_client.order_builder.constants import BUY
         o_args = OrderArgs(token_id=token_id, price=round(price, 4),
                            size=round(budget, 2), side=BUY)
         signed = client.create_order(o_args)

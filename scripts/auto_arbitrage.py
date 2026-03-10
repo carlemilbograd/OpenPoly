@@ -25,8 +25,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _client import GAMMA_API, get_client
-from py_clob_client.clob_types import OrderArgs, OrderType, BalanceAllowanceParams, AssetType
-from py_clob_client.order_builder.constants import BUY
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 FEE_ESTIMATE   = 0.02    # ~2% round-trip fee estimate
@@ -69,6 +67,7 @@ def parse_interval(s: str) -> int:
 def get_balance(client) -> float:
     """Fetch current USDC balance."""
     try:
+        from py_clob_client.clob_types import BalanceAllowanceParams, AssetType
         params = BalanceAllowanceParams(asset_type=AssetType.COLLATERAL)
         bal = client.get_balance_allowance(params=params)
         return float(bal.get("balance", 0)) / 1e6  # USDC has 6 decimals
@@ -308,6 +307,8 @@ def run_once(args, client, state: dict) -> dict:
 
     # ── Execute ───────────────────────────────────────────────────────────────
     logger.info(f"Executing {len(best['outcomes'])} arb legs...")
+    from py_clob_client.clob_types import OrderArgs, OrderType
+    from py_clob_client.order_builder.constants import BUY
     order_ids  = []
     failed_legs = 0
 

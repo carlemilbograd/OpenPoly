@@ -48,14 +48,16 @@ def test_fingerprint_same_title_different_domain():
            story_fingerprint("Big news", "b.com", ts)
 
 def test_fingerprint_same_title_15min_bucket():
-    base = time.time()
+    # Anchor to the start of the current 15-min bucket so +5 min never crosses a boundary.
+    base = (int(time.time()) // 900) * 900
     assert story_fingerprint("Big news", "a.com", base) == \
            story_fingerprint("Big news", "a.com", base + 300)   # 5 min later → same bucket
 
 def test_fingerprint_different_15min_bucket():
-    base = time.time()
+    # Anchor to start of bucket; +900 s is exactly the next bucket boundary.
+    base = (int(time.time()) // 900) * 900
     assert story_fingerprint("Big news", "a.com", base) != \
-           story_fingerprint("Big news", "a.com", base + 1200)  # 20 min later → new bucket
+           story_fingerprint("Big news", "a.com", base + 900)   # 15 min later → new bucket
 
 def test_fingerprint_case_insensitive():
     ts = time.time()
