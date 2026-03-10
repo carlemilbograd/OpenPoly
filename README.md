@@ -42,7 +42,7 @@ No intermediary. No dashboard. Just your agent and a full trading toolkit.
 |---|---|
 | **Portfolio** | Balance, positions, exposure analysis, P&L |
 | **Research** | Market search, orderbook, price history, deep stats, Kelly sizing |
-| **Trading** | Limit / market / GTD orders with confirmation gate |
+| **Trading** | Limit / GTD orders with confirmation gate — GTC default, 1-min minimum lifetime |
 | **Arbitrage** | Scanner, executor, automated bot, slippage simulation |
 | **Corr. Arb** | Cross-market keyword graph — finds logically linked mispriced pairs |
 | **News trading** | 4-layer pipeline: GDELT + NewsAPI + RSS → dedup → cluster → score → gate |
@@ -179,16 +179,15 @@ python scripts/orderbook.py --token-id TOKEN_ID --depth 10
 # Preflight check — verify everything before committing money (run this first)
 python scripts/trade.py --token-id TOKEN_ID --side BUY --price 0.55 --size 10 --dry-run
 
-# Limit order (GTC)
+# Limit order (GTC — default, good till cancelled)
 python scripts/trade.py --token-id TOKEN_ID --side BUY --price 0.55 --size 10
 
-# Market order (FOK)
-python scripts/trade.py --token-id TOKEN_ID --side BUY --size 25 --type FOK
-
-# Limit with expiry (GTD)
+# Limit with expiry (GTD — min 60s expiry)
 python scripts/trade.py --token-id TOKEN_ID --side SELL --price 0.70 --size 5 \
   --type GTD --expiry 3600
 ```
+
+> **Note:** Polymarket enforces a minimum 1-minute order lifetime — FOK/fill-or-kill and immediate market orders are not supported. All orders rest on the book as GTC (default) or GTD.
 
 `--dry-run` runs 5 checks without submitting anything:
 

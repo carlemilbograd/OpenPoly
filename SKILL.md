@@ -158,21 +158,23 @@ poly trade --token-id TOKEN_ID --side BUY --price 0.55 --size 10 --dry-run
 This verifies credentials, balance, market status, and geoblock access **without submitting anything**.
 Run this whenever the user asks "can I trade?", "am I blocked?", or "do I have enough balance?"
 
-**Limit order:**
+**Limit order (GTC — default):**
 ```bash
 poly trade --token-id TOKEN_ID --side BUY --price 0.55 --size 10 --type GTC
 ```
 
-**Market order:**
+**Limit with expiry (GTD):**
 ```bash
-poly trade --token-id TOKEN_ID --side BUY --size 25 --type FOK
+poly trade --token-id TOKEN_ID --side SELL --price 0.70 --size 5 --type GTD --expiry 3600
 ```
 
 - `--side`: BUY or SELL
-- `--price`: price in USDC (0.01–0.99), omit for market orders
+- `--price`: price in USDC (0.01–0.99)
 - `--size`: amount in USDC
-- `--type`: GTC (limit), GTD (limit with expiry), FOK (market fill-or-kill)
+- `--type`: GTC (default, good-till-cancelled) or GTD (good-till-date, min 60s expiry)
 - `--dry-run`: preflight only — checks credentials, balance, market active, geoblock, local signing
+
+> **Note:** Polymarket enforces a minimum 1-minute order lifetime. FOK (fill-or-kill) and immediate market orders are not supported — all orders rest on the book.
 
 ⚠️ **ALWAYS confirm with the user before executing a trade.** Show the order details (market name, side, price, size, estimated cost) and ask "Shall I place this order?" before running.
 

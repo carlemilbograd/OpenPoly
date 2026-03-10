@@ -179,7 +179,7 @@ def place_quote(client, token_id: str, side: str, price: float, size_usd: float,
             side=poly_side,
         )
         signed = client.create_order(o_args)
-        resp   = client.post_order(signed, OrderType.GTD)
+        resp   = client.post_order(signed, OrderType.GTC)
         return str((resp or {}).get("orderID") or (resp or {}).get("id") or "?")
     except Exception as e:
         log(f"Order error ({side} {token_id[:12]} @ {price:.4f}): {e}")

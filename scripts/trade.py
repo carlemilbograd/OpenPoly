@@ -222,8 +222,11 @@ def main():
     parser.add_argument("--size", "-z", type=float, required=True,
                         help="Size in USDC")
     parser.add_argument("--type", dest="order_type", default="GTC",
-                        choices=["GTC", "GTD", "FOK"],
-                        help="GTC=limit, FOK=market fill-or-kill, GTD=limit with expiry")
+                        choices=["GTC", "GTD"],
+                        help="GTC=limit good-till-cancelled (default), "
+                             "GTD=limit with expiry (min expiry 60s). "
+                             "Note: Polymarket enforces a minimum 1-minute order "
+                             "lifetime — fill-or-kill (FOK) is not supported.")
     parser.add_argument("--expiry", type=int, default=3600,
                         help="GTD expiry in seconds (default 3600)")
     parser.add_argument("--confirm", action="store_true",
@@ -241,7 +244,6 @@ def main():
     order_type_map = {
         "GTC": OrderType.GTC,
         "GTD": OrderType.GTD,
-        "FOK": OrderType.FOK,
     }
     order_type = order_type_map[args.order_type]
 
@@ -281,27 +283,18 @@ def main():
     client = get_client(authenticated=True)
 
     try:
-        if args.order_type == "FOK":
-            # Market order — order_type is NOT passed to MarketOrderArgs, only to post_order
-            mo_args = MarketOrderArgs(
-                token_id=args.token_id,
-                amount=args.size,
-                side=side_const,
-            )
-            signed = client.create_market_order(mo_args)
-            resp = client.post_order(signed, order_type)
-        else:
-            # Limit order — client auto-resolves tick_size and neg_risk per market
-            expiration = args.expiry if args.order_type == "GTD" else 0
-            o_args = OrderArgs(
-                token_id=args.token_id,
-                price=args.price,
-                size=args.size,
-                side=side_const,
-                expiration=expiration,
-            )
-            signed = client.create_order(o_args)
-            resp = client.post_order(signed, order_type)
+        # All orders use GTC or GTD — Polymarket requires a minimum 1-minute
+        # order lifetime, so FOK/immediate execution is not supported.
+        expiration = args.expiry if args.order_type == "GTD" else 0
+        o_args = OrderArgs(
+            token_id=args.token_id,
+            price=args.price,
+            size=args.size,
+            side=side_const,
+            expiration=expiration,
+        )
+        signed = client.create_order(o_args)
+        resp = client.post_order(signed, order_type)
 
         print(f"\n  ✅ Order submitted!")
         print(f"  Response: {resp}")
