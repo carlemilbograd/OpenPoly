@@ -61,6 +61,7 @@ COMMANDS = {
     "risk":         ("risk_guard.py",            "Daily loss limits + kill switch  status|kill|reset|set"),
     "db":           ("db.py",                    "SQLite data layer  status|migrate|signals|trades|accuracy"),
     "prob":         ("prob_model.py",            "Calibrated fair-probability estimate  --market-id ID  [--balance N] [--json]"),
+    "geoblock":     ("geoblock.py",              "Check whether your IP/account is geo-blocked  [--no-auth] [--json]"),
 }
 
 # ── aliases ───────────────────────────────────────────────────────────────────
@@ -96,6 +97,9 @@ ALIASES = {
     "probability":  "prob",
     "fair":         "prob",
     "edge":         "prob",
+    "geo":          "geoblock",
+    "blocked":      "geoblock",
+    "geo-check":    "geoblock",
 }
 
 
@@ -120,7 +124,7 @@ def _print_help():
         ("Trading", ["trade", "cancel", "redeem"]),
         ("Monitoring", ["watch", "monitor"]),
         ("Automation", ["auto-arb", "schedule", "news", "mm", "signals", "omni"]),
-        ("Evaluation & Safety", ["backtest", "eval", "risk", "db", "prob"]),
+        ("Evaluation & Safety", ["backtest", "eval", "risk", "db", "prob", "geoblock"]),
     ]
 
     for section, cmds in sections:
