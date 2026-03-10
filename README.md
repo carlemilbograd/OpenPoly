@@ -57,6 +57,9 @@ No intermediary. No dashboard. Just your agent and a full trading toolkit.
 | **Data layer** | Unified SQLite store — articles, signals, trades, outcomes, per-source accuracy |
 | **Prob model** | Calibrated fair-probability engine — Bayesian prior + signal updates + Kelly sizing |
 | **On-chain** | Redeem resolved winning positions via Polygon CTF contract |
+| **Geo-block check** | Official IP-based check — returns country, region, blocked / close-only status |
+| **Security** | API key entropy check at startup, secret masking in all error output, kill switch wired into every auto bot |
+| **Tests & CI** | 100 pytest tests across 5 test files, GitHub Actions CI on every push |
 
 ---
 
@@ -121,6 +124,7 @@ These are real examples of what you can say. The agent picks the right script.
 | Deep market stats | `market_stats.py --market-id …` |
 | Research a market, suggest a trade | `research_agent.py` |
 | Buy YES at 0.45 | `trade.py` (confirmation required) |
+| Am I geo-blocked? / Check my region | `geoblock.py` |
 | What orders do I have open? | `open_orders.py` |
 | Cancel all orders | `cancel.py --all` |
 | Show trade history | `history.py --limit 20` |
@@ -200,6 +204,25 @@ python scripts/trade.py --token-id TOKEN_ID --side SELL --price 0.70 --size 5 \
 | Order signing | Key format errors (pure local crypto, no POST) |
 
 Always shows an order preview and asks for confirmation before submitting a real order.
+</details>
+
+<details>
+<summary><b>geoblock.py</b> — Check if your IP is geo-blocked</summary>
+
+```bash
+poly geoblock            # check via official Polymarket geoblock API
+poly geoblock --json     # machine-readable output
+```
+
+Calls `GET https://polymarket.com/api/geoblock`. Returns your IP, country, region,
+and whether trading is permitted. No credentials required.
+
+Status codes:
+- **`ok`** — trading permitted from your location
+- **`close_only`** — you can close existing positions but not open new ones (PL, SG, TH, TW)
+- **`blocked`** — region is restricted (AU, DE, FR, GB, US, and others)
+
+Aliases: `poly geo` · `poly blocked` · `poly geo-check`
 </details>
 
 <details>
@@ -422,6 +445,8 @@ python scripts/market_maker.py --status                        # inventory view
 python scripts/market_maker.py --close --market-id TOKEN       # cancel + exit
 ```
 Targets near-50/50 high-volume markets. Inventory skew prevents directional over-exposure.
+
+Execution sophistication: before cancelling and re-quoting, checks queue position (skips repost if price is still within one tick of best bid/ask) and partial-fill detection (tracks fills ≥50% and updates inventory immediately).
 </details>
 
 ---
@@ -669,6 +694,7 @@ OpenPoly/
     ├── markets.py
     ├── orderbook.py
     ├── trade.py
+    ├── geoblock.py           # IP geo-block check via official Polymarket API
     ├── cancel.py
     ├── open_orders.py
     ├── history.py
@@ -740,6 +766,9 @@ For types `1` and `2`: export your private key from **polymarket.com → Setting
 ## Security
 
 - Private key is loaded from `.env` at runtime and never logged or transmitted
+- API key/secret undergo an entropy check at startup — placeholder strings (`YOUR_KEY`, blank values, all-same-chars, keys shorter than 32 hex chars) are rejected before any network call
+- Any exception that mentions a key or secret has it redacted from output — never appears in plain text logs
+- Kill switch (`poly risk kill`) is wired into all autonomous bots — a single command halts `market_maker`, `auto_arbitrage`, `ai_automation`, and `trade`
 - `.env` is in `.gitignore` — it will never be committed
 - Every trade script shows a preview and requires explicit confirmation before submitting
 - Order execution uses the official [py-clob-client](https://github.com/Polymarket/py-clob-client) library only

@@ -4,7 +4,7 @@ user-invocable: true
 description: >
   A full-featured Polymarket trading skill. Enables the agent to fetch account
   info, browse markets, analyse orderbooks, detect arbitrage, run LLM-powered
-  research, and execute trades — all via natural language instructions.
+  research, execute trades, and check geographic restrictions — all via natural language instructions.
   Requires POLYMARKET_PRIVATE_KEY (and POLYMARKET_FUNDER_ADDRESS for signature types 1 and 2)
   set as environment variables or in ~/.openclaw/workspace/skills/polymarket/.env
 ---
@@ -26,6 +26,7 @@ Polymarket APIs. It can:
 8. **Watchlist & Alerts** — monitor markets and trigger price alerts
 9. **Automation Scheduler** — register any script to run on any interval, start/stop background daemon
 10. **Market Monitor** — automated scanning for price moves, arb gaps, volume spikes, and 50/50 opportunities
+11. **Geo-block Check** — verify whether your current IP is permitted to trade on Polymarket (official API, no credentials required)
 
 ---
 
@@ -894,6 +895,37 @@ print(result["suggested_size"])   # 22.50  (USDC)
 4. For each signal: Bayesian update scaled by source credibility × time decay
 5. Shrink toward market price proportional to N_signals / (N_signals + 4)
 6. Compute Kelly: `f* = (p×b − q) / b` where `b = (1−price) / price`
+
+---
+
+## 30. geoblock.py — Geographic Restriction Check
+
+**Purpose**: Check whether your current IP address is permitted to trade on Polymarket.
+Uses the official `GET https://polymarket.com/api/geoblock` endpoint — no credentials required.
+Returns exact country/region and a clear blocked / close-only / ok status.
+
+**When to use**:
+- When user asks "am I geo-blocked?", "can I trade from here?", "is my location blocked?"
+- Before starting any bot, to ensure the region is permitted
+- When a trade fails with HTTP 403 or 451
+
+**Status meanings**:
+| Status | Meaning |
+|---|---|
+| `ok` | Trading fully permitted from your IP |
+| `close_only` | Can close existing positions only (PL, SG, TH, TW) |
+| `blocked` | Region is restricted — no trading allowed |
+
+**Commands**:
+```bash
+poly geoblock          # check and print result
+poly geoblock --json   # machine-readable {blocked, ip, country, region}
+```
+
+**Aliases**: `poly geo` · `poly blocked` · `poly geo-check`
+
+**Blocked countries** (partial list): AU, BE, DE, FR, GB, IR, IT, NL, RU, US and others.
+Full list: https://docs.polymarket.com/api-reference/geoblock
 
 ---
 
